@@ -433,26 +433,30 @@ Arduino UNO
 ```text
 elegoo-rover-lab/
 ├── README.md
-├── arduino/
-│   ├── motor_test/
-│   ├── ultrasonic_test/
-│   ├── line_tracking_test/
-│   └── autonomous_drive/
+├── app/                # Web層（TypeScript）: 掃除ロジック・シム・UI ＋ Web Serial
+│   ├── src/            #   config / types / domain / protocol / io / sim / runner / ui
+│   ├── package.json / tsconfig.json
+│   └── README.md
+├── arduino/            # UNO層（C++）: 純正スケッチのコピー＋N=24追加（予定）
 ├── docs/
-│   ├── arduino-basics.md
-│   ├── rules.md
-│   ├── parts.md
-│   ├── wiring.md
-│   └── notes.md
-├── experiments/
-│   ├── 001_forward_stop_turn.md
-│   ├── 002_motor_speed_test.md
-│   ├── 003_obstacle_stop.md
-│   └── 004_line_tracking.md
-└── images/
+│   ├── basics/        # Arduino・コードの基礎
+│   │   ├── arduino-basics.md
+│   │   └── demo1-tb6612-mpu6050.md
+│   ├── reference/     # キット仕様・既存コードのリファレンス
+│   │   ├── machine-reference.md
+│   │   ├── code-reference-classes.md
+│   │   └── research-route-and-avoidance.md
+│   ├── project/       # 自作ルンバの構想・計画・設計
+│   │   ├── idea-diy-roomba.md
+│   │   ├── plan-diy-roomba-impl.md
+│   │   ├── cleaning-logic-spec.md
+│   │   └── code-design.md
+│   └── rules.md       # 開発ルール
+├── experiments/       # （予定）実験ログ
+└── images/            # （予定）画像
 ```
 
-Arduino の基礎（`setup()` / `loop()` / C++ / 開発環境）については [docs/arduino-basics.md](docs/arduino-basics.md) を参照してください。
+Arduino の基礎（`setup()` / `loop()` / C++ / 開発環境）については [docs/arduino-basics.md](docs/basics/arduino-basics.md) を参照してください。
 
 ## 最初の実験
 
