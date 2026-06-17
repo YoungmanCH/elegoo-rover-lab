@@ -153,8 +153,9 @@ arduino/
 |---|---|---|---|
 | Web→UNO | 3 | 駆動（前進/その場旋回） | `{"H":1,"N":3,"D1":,"D2":}` |
 | UNO→Web | 21 | 前方距離 | `{H_<cm>}` |
-| UNO→Web | 23 | 離地（**真偽が反転**） | `{H_true/false}` |
-| UNO→Web | 24 | **Yaw（追加）** ※旋回制御に必要。電圧が要れば別コマンドに分ける | `{H_<yawDeg>}`（形は実装時確定） |
+| UNO→Web | 23 | 離地（**真偽が反転**：接地→`_true`/離地→`_false`） | `{H_true/false}` |
+| UNO→Web | 24 | **Yaw（追加）** ※旋回制御に必要 | `{H_<yawDeg>}`（形は実装時確定） |
+| UNO→Web | 25 | **電圧（追加・任意）** ※テレメトリ表示用。brain は使わない | `{H_<voltage>}`（形は実装時確定） |
 
 ---
 
@@ -172,6 +173,37 @@ runner.tick(): serial-robot.read()  // N=21距離 / N=23離地 [/ N=24 yaw]
             → serial-robot.send()    // N=3 前進/左旋回
 ```
 `cleaning.step()` と `runner` は**両モード共通**。`RobotIO` の実装差し替えだけ。
+
+---
+
+## 6.1 実機モードの可視化（テレメトリ ＋ カメラ）
+
+> **なぜここに書くか**：2Dマップは本質的に「シム（推定）」。実機には自己位置(x,y)が無い（エンコーダ無し）ので、実機で“本物”として見せられるものを切り分けて定義しておく。**記録のみ・実装は後。**
+
+- **2Dマップ表示はシム専用**（実機では真の位置を描けない＝推定にしかならない）。開発・デモ用に維持する。
+- **実機モードのWeb画面** ＝ 次の独立した部品の組み合わせ：
+
+| 部品 | データ源 | チャネル | 本物? | 状態 |
+|---|---|---|---|---|
+| テレメトリパネル ① | 距離(N=21)/yaw(N=24)/離地(N=23)/電圧(N=25) | Web Serial（USB・既存経路） | ✅ 実測 | UI拡張で対応 |
+| カメラパネル ③（任意） | ESP32-CAM の MJPEG | WiFi（`<img src>`・別系統） | ✅ 実映像 | 任意・要スパイク |
+| 2Dマップ | model の pose | シムのみ | ⚠ 推定 | 済 |
+
+### onTick の拡張（テレメトリ供給のため）
+`runner` のコールバックを「状態だけ」から「センサ・指令も渡す」形に広げる。UIが実測値を描けるようにするため。
+
+```ts
+// 変更前
+onTick?: (state: State) => void
+// 変更後
+onTick?: (state: State, sensors: Sensors, cmd: Command) => void
+```
+
+brain（`cleaning`）は無変更。`runner` が read した `sensors` と `step` が返した `cmd` をそのまま渡すだけ（副作用なし・依存は増えない）。
+
+### カメラは独立チャネル（結合しない）
+- カメラデータは **UNO/Serial 経路には来ない**。ESP32-CAM が WiFi で配信し、ページは `<img>` で埋め込むだけ。`protocol.ts` / `serial-robot.ts` とは無関係。
+- ハード前提（USB制御 と WiFi映像 の同時利用、ESP32↔UNO の UART 競合）は**実機で要確認**。ダメなら「カメラは別タブ表示」にフォールバック。
 
 ---
 
@@ -196,6 +228,7 @@ runner.tick(): serial-robot.read()  // N=21距離 / N=23離地 [/ N=24 yaw]
 ## 9. 現状 / 次の一手
 - ✅ 土台作成済み：`app/README.md` ／ `app/package.json`（vite + typescript + vitest + `@types/w3c-web-serial`）／ `app/tsconfig.json`。
 - ⬜ 未着手：`arduino/SmartRobotCarV4.0_DIY/`（純正コピー＋N=24）は段階5で用意。
+- ⬜ 未着手（記録のみ）：実機モードUI＝テレメトリパネル①（`onTick` 拡張）／カメラパネル③（要スパイク・§6.1）。
 - 次：`cd app && npm install` 後、**段階1（`config.ts` / `types.ts` → `domain/cleaning.ts` ＋ 単体テスト）** から。
 
 ---

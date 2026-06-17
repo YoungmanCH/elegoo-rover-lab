@@ -490,3 +490,10 @@ Arduino の基礎（`setup()` / `loop()` / C++ / 開発環境）については 
 ## License
 
 MIT
+
+
+## MEMO
+
+```Test params
+{"H":"3","N":3,"D1":3,"D2":120}
+```
