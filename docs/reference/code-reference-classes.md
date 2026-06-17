@@ -69,12 +69,12 @@ void CMD_UltrasoundModuleStatus_xxx0(uint8_t is_get) {
   else if (2 == is_get) { char s[10]; sprintf(s,"%d",UltrasoundData_cm); /* {H_<cm>} */ }
 }
 // N=22：ライン生値 [App:1550-1611]  D1=0/1/2 → {H_<TrackingData_L/M/R>}（analogRead生値）
-// N=23：離地 [App:1904-1917]  ※反転に注意：接地(Car_LeaveTheGround=true)→ "{H_false}" / 浮く→ "{H_true}"
+// N=23：離地 [App:1904-1917]  ※反転に注意：接地(Car_LeaveTheGround=false)→ "{H_true}" / 浮く(=true)→ "{H_false}"
 ```
 
 ### A-4. しきい値・状態変数 [App.h:73-86]
 ```cpp
-boolean Car_LeaveTheGround = true;        // 接地状態（SensorDataUpdateが更新）
+boolean Car_LeaveTheGround = true;        // 離地フラグ：true=床から離れている（SensorDataUpdateが更新）
 const float   VoltageDetection = 7.00;    // 低電圧しきい値[V]
 const uint8_t ObstacleDetection = 20;     // 障害物しきい値[cm]
 uint8_t  TrackingDetection_S = 250;       // ライン判定 下限

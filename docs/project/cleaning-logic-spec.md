@@ -20,6 +20,8 @@
 - **TURN**：その場左旋回。毎tick yaw を見て、`|yaw − startYaw| ≥ 目標角` で DRIVE へ戻る。
 - 左回りベース。局所ループ回避に目標角へ小さな乱数(±jitter)を混ぜてもよい（任意）。
 
+> **補足（旋回は目標角を少しオーバーする）**：旋回は制御周期ごとに一定角度ずつ進む**離散制御**。`|Δyaw| ≥ targetDeg` をまたいだ**次のtickで止まる**ので、必ず1tickぶん行き過ぎる。例：シムで約4.7度/tick のとき **19tick=89.4度（<90で継続）/ 20tick=94.1度（≥90で停止）→ 約4度オーバー**。実用上は問題なし。直角に寄せたいなら1tickの回転角を小さく（`turnSpeed`↓）。実機でも同種の量子化誤差は出る。
+
 ## 2. 入出力（純関数）
 
 ```ts
@@ -53,7 +55,7 @@ function step(s: Sensors, st: State, cfg: Config): { cmd: Command; next: State }
 | rotateLeft | `{"H":1,"N":3,"D1":1,"D2":speed}` | その場左旋回 |
 | stop | `{"H":1,"N":3,"D1":3,"D2":0}` | |
 | distanceCm | `{"N":21,"D1":2}` → `{H_<cm>}` | |
-| lifted | `{"N":23}` → `{H_true/false}` | **真偽が反転**（接地→`_false`） |
+| lifted | `{"N":23}` → `{H_true/false}` | **真偽が反転**（接地→`_true` / 離地→`_false`）⇒ `lifted=(payload==="false")` |
 | yawDeg | **JSONに無い** | → `N=24` 自前追加が必要（§6） |
 
 ## 4. パラメータ（初期値）
