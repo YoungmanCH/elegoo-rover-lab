@@ -23,4 +23,6 @@ export const initialState: State = {
     turnTicksLeft: 0,       // ★最初は旋回していない
 }
 
-
+// WiFi接続先(WS中継 / カメラMJPEG)。USB は requestPort なのでURL不要。
+export const WS_URL = "ws://localhost:8081";
+export const CAM_URL = "http://192.168.4.1:81/stream";
