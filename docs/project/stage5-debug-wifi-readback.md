@@ -9,7 +9,7 @@
 ## 1. 事実と症状
 
 **わかっていること（確定）**
-- UNO（`arduino/`）はUSB接続で距離も離地も全部返す＝**正常**（実証済み）。
+- UNO（`arduino/`）はUSB接続で距離も離地も全部返す＝<!-- * -->*正常**（実証済み）。
 - UNOの**ハードUARTは1本**（D0/D1）で、**USB(CH340)とESP32(Serial2)が同じ線を共有**。
   → UNOは**USBでもWiFiでも同じバイトを同じ線に出す**。WiFiのときだけ「返さない」は物理的に起きない。
 - カメラ（WiFi/ESP32/IP）は出る。コマンド送信（駆動）も届く。
@@ -66,26 +66,41 @@ if (Serial2.available())        // UNO → ESP32
 
 ### 提案する変更（一時デバッグ。確認後に戻す）
 
-```js
-let buf = "";
-tcp.on("data", (chunk) => {
-    const raw = chunk.toString("latin1");
-    console.log("[esp32→raw]", JSON.stringify(raw));        // ★① 生バイト(フィルタ前)
-    buf += raw;
-    const re = /\{[^}]*\}/g;
-    let m, last = 0;
-    while ((m = re.exec(buf))) {
-        const frame = m[0];
-        if (frame !== "{Heartbeat}") { console.log("[esp32→ws]", frame); ws.send(frame); }  // ★② 転送した非HB
-        last = re.lastIndex;
-    }
-    buf = buf.slice(last);
-});
+> **前提**：`tcp` と `ws` は**新しく宣言しない**。下記は `wss.on("connection", (ws) => { … })` の**中**にある
+> 既存の `tcp.on("data")`（現25行目あたり）と `ws.on("message")`（現38行目あたり）を**置き換える**だけ。
+> `ws` はそのコールバック引数、`tcp` は同ブロック冒頭の `const tcp = net.connect(...)`（現18行目）で既に存在する。
+> 文脈を示すと↓（`wss.on(...)`〜`const tcp`〜`let buf` は**既存・無変更**、`★`の console.log だけ追加）。
 
-ws.on("message", (data) => {
-    const s = data.toString();
-    console.log("[ws→esp32]", s);                           // ★③ ブラウザ→ESP32 のコマンド
-    try { tcp.write(s); } catch {}
+```js
+wss.on("connection", (ws) => {                 // 既存：ws はここの引数
+    console.log("[bridge] browser connected"); // 既存
+    const tcp = net.connect(ESP32_PORT, ESP32_HOST, () => console.log("[bridge] ESP32 connected")); // 既存：tcp はここ
+    const hb = setInterval(() => { try { tcp.write("{Heartbeat}"); } catch {} }, 1000);             // 既存
+
+    // ↓↓↓ ここから既存の tcp.on("data") を、この内容に置き換える ↓↓↓
+    let buf = "";
+    tcp.on("data", (chunk) => {
+        const raw = chunk.toString("latin1");
+        console.log("[esp32→raw]", JSON.stringify(raw));        // ★① 生バイト(フィルタ前)
+        buf += raw;
+        const re = /\{[^}]*\}/g;
+        let m, last = 0;
+        while ((m = re.exec(buf))) {
+            const frame = m[0];
+            if (frame !== "{Heartbeat}") { console.log("[esp32→ws]", frame); ws.send(frame); }  // ★② 転送した非HB
+            last = re.lastIndex;
+        }
+        buf = buf.slice(last);
+    });
+
+    // ↓↓↓ ここで既存の ws.on("message") を、この内容に置き換える ↓↓↓
+    ws.on("message", (data) => {
+        const s = data.toString();
+        console.log("[ws→esp32]", s);                           // ★③ ブラウザ→ESP32 のコマンド
+        try { tcp.write(s); } catch {}
+    });
+
+    // …以降の cleanup / ws.on("close") / tcp.on("close") 等は既存のまま…
 });
 ```
 
