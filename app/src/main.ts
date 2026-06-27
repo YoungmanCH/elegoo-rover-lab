@@ -1,18 +1,14 @@
 // main.ts — シムデモ＋実機自走の組み立て。部品を繋ぎ、ボタンに配線する。
-import { defaultConfig, initialState } from "./config";
+import { defaultConfig, initialState, WS_URL, CAM_URL } from "./config";
 import { defaultSimConfig } from "./sim/model";
 import type { World } from "./sim/model";
+import type { Transport } from "./io/transport";
 import { SimRobot } from "./sim/sim-robot";
 import { createRunner } from "./runner";
-import type { Runner } from "./runner";
 import { draw } from "./ui";
 import { SerialTransport } from "./io/transport";
-import { SerialRobot } from "./io/serial-robot";
 import { WebSocketTransport } from "./io/ws-transport";
-
-// 定数(ファイル上部のどこか)
-const WS_URL = "ws://localhost:8081";
-const CAM_URL = "http://192.168.4.1:81/stream";
+import { RobotSession } from "./session";       // 接続の所有・差し替え(旧を畳んでから新)を一手に持つ
 
 const canvas = document.querySelector<HTMLCanvasElement>("#sim")!;
 const ctx = canvas.getContext("2d")!;
@@ -28,22 +24,21 @@ const simRunner = createRunner(simRobot, defaultConfig, initialState, () => {
 draw(ctx, simRobot.getWorld(), defaultSimConfig); // 初期状態を1回描く
 
 // --- 実機(自走)。接続できたらここに入る ---
-let realRunner: Runner | null = null;
-let realRobot: SerialRobot | null = null;   // 緊急停止で直接 stop を送るため保持
+const session = new RobotSession();
 
 // 緊急停止: ループを止め、実機に stop を複数回送る(25m USB で1フレーム落ちても止まるように)
 async function emergencyStop(): Promise<void> {
     simRunner.stop();
-    realRunner?.stop();
+    session.runner?.stop();
     for (let i = 0; i < 3; i++) {
-        await realRobot?.send({ kind: "stop", speed: 0 }).catch(() => {});
+        await session.robot?.send({ kind: "stop", speed: 0 }).catch(() => {});
     }
     console.log("■ 停止");
 }
 
 // 開始: 実機接続済みなら実機を、未接続ならシムを走らせる
 document.querySelector("#start")!.addEventListener("click", () => {
-    (realRunner ?? simRunner).start();      // 実機接続済みなら実機、未接続ならシム
+    (session.runner ?? simRunner).start();      // 実機接続済みなら実機、未接続ならシム
 });
 
 // 停止: 緊急停止(stopを複数回送る)。ボタンもキー(Esc/Space)と同じ確実な停止にする。
@@ -54,26 +49,41 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" || e.key === " ") { e.preventDefault(); void emergencyStop(); }
 })
 
+const connectBtn = document.querySelector<HTMLButtonElement>("#connect")!;
+const wifiBtn = document.querySelector<HTMLButtonElement>("#connect-wifi")!;
 
-// 実機接続: ポートを開き、SerialRobot で runner を組む(まだ走らせない=安全)
-document.querySelector("#connect")!.addEventListener("click", async () => {
-    const tx = await SerialTransport.open();          // ★ユーザー操作内で requestPort
-    realRobot = new SerialRobot(tx);
-    realRunner = createRunner(realRobot, defaultConfig, initialState, (state, sensors, cmd) => {
-        // 壁検知が効いているか見えるよう、距離・相・指令をログ
-        console.log(`[tick] dist=${sensors.distanceCm}cm phase=${state.phase} left=${state.turnTicksLeft} cmd=${cmd.kind}`);
-    });
-    console.log("実機接続OK。『開始』で自走、『停止』またはEsc/Spaceで停止。");
+// USB/WiFi 共通の接続処理。Transport の開け方だけ差し替え、あとは session に委ねる。
+// session.connect が「旧を stop→close してから新を張る」ので、二重接続=ゾンビ runner が生まれない。
+// まだ走らせない(start しない)=安全。返り値は成功可否(カメラ表示の判断に使う)。
+async function connect(openTransport: () => Promise<Transport>, okMsg: string): Promise<boolean> {
+    connectBtn.disabled = wifiBtn.disabled = true;      // open 中は多重クリック不可
+    try {
+        await session.connect(openTransport, (robot) => createRunner(robot, defaultConfig, initialState, (state, sensors, cmd) => {
+          // 壁検知が効いているか見えるよう、距離・相・指令をログ
+          console.log(
+            `[tick] dist=${sensors.distanceCm}cm phase=${state.phase} left=${state.turnTicksLeft} cmd=${cmd.kind}`,
+          );
+        }));
+        console.log(okMsg);
+        return true;
+    } catch (e) {
+        console.warn("接続失敗:", (e as Error).message);   // 失敗=未接続(安全側)。シムは使える
+        return false;
+    } finally {
+        connectBtn.disabled = wifiBtn.disabled = false;   // 失敗でも再挑戦できるよう必ず戻す
+    }
+}
+
+// USB接続: ユーザー操作内で requestPort が要るので click ハンドラ直下で開く。
+connectBtn.addEventListener("click", () => {
+    void connect(() => SerialTransport.open(), "実機接続OK。『開始』で自走、『停止』/Esc/Spaceで停止。");
 });
 
-// WiFi接続: WebSocketTransport に差し替えるだけ(同じ SerialRobot/runner)。カメラも表示。
-document.querySelector("#connect-wifi")!.addEventListener("click", async () => {
-    const tx = await WebSocketTransport.open(WS_URL);
-    realRobot = new SerialRobot(tx);                  // ★同じ SerialRobot(Transport 依存)
-    realRunner = createRunner(realRobot, defaultConfig, initialState, (state, sensors, cmd) => {
-        console.log(`[tick] dist=${sensors.distanceCm}cm phase=${state.phase} left=${state.turnTicksLeft} cmd=${cmd.kind}`);
-    });
-    const cam = document.querySelector<HTMLImageElement>("#cam");
-    if (cam) cam.src = CAM_URL;                       // カメラ映像を表示
-    console.log("WiFi接続OK。『開始』で自走、『停止』/Esc/Spaceで停止。");
+// WiFi接続: WS中継経由でつなぐ。USB と違うのは Transport の開け方とカメラ表示だけ。
+wifiBtn.addEventListener("click", async () => {
+    const ok = await connect(() => WebSocketTransport.open(WS_URL), "WiFi接続OK。『開始』で自走、『停止』/Esc/Spaceで停止。");
+    if (ok) {
+        const cam = document.querySelector<HTMLImageElement>("#cam");
+        if (cam) cam.src = CAM_URL;     // カメラはWiFi接続成功時だけ表示
+    }
 });
