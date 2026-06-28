@@ -30,21 +30,23 @@ class FakeTransport implements Transport {
 }
 
 describe("serialRobot", () => {
-    it("read は距離/離地/yaw を組み立てる(接地→lifted false)", async () => {
-        const tx = new FakeTransport({ "21": "45", "23": "true", "24": "-10.5" });
+    it("read は距離/離地を組み立てる(yaw は問い合わせず0・接地→lifted false)", async () => {
+        const tx = new FakeTransport({ "21": "45", "23": "true" });
         const s = await new SerialRobot(tx).read();
-        expect(s).toEqual({ distanceCm: 45, yawDeg: -10.5, lifted: false });
+        expect(s).toEqual({ distanceCm: 45, yawDeg: 0, lifted: false });
+        // yaw(N=24)は問い合わせない(応答が来ず毎回タイムアウトで遅くなるため)
+        expect(tx.writes.some((w) => JSON.parse(w).N === 24)).toBe(false);
     });
 
     it("離地は lifted true(反転)", async () => {
-        const tx = new FakeTransport({ "21": "30", "23": "false", "24": "0" });
+        const tx = new FakeTransport({ "21": "30", "23": "false" });
         const s = await new SerialRobot(tx).read();
         expect(s.distanceCm).toBe(30);
         expect(s.lifted).toBe(true);
     });
 
     it("ノイズ(エコー/ACK)が混ざっても H で正しく拾う", async () => {
-        const tx = new FakeTransport({ "21": "30", "23": "false", "24": "0" }, true);
+        const tx = new FakeTransport({ "21": "30", "23": "false" }, true);
         const s = await new SerialRobot(tx).read(); // 各 query が{99_noise}を飛ばし目的を拾う
         expect(s.distanceCm).toBe(30);
     });

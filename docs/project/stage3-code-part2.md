@@ -3,6 +3,8 @@
 > **このゴール**：シムと同じ brain・runner のまま、IO を **Web Serial の実機**に差し替える。`protocol`（第一弾）の上に「実際の送受信」を載せる。
 > **位置づけ**：レビュー用草案 → OKで実ファイルに落とす。副作用が主なので**手動スモーク**中心（純ロジックは fake で単体テスト）。
 > 参照：[stage3-code.md](stage3-code.md)（protocol）／ [code-design.md](code-design.md) §3,§5
+>
+> **※追記（最終仕様）**：本稿の yaw/N=24 は**最終的に不採用**。旋回は**タイマー旋回（turnTicks）**へ変更し、実機 `read()` は **N=24 を問い合わせない**（`yawDeg` は 0 固定）。以下の「yaw を読む／N=24 が要る／完全自走は N=24 後」等は歴史的草案として読むこと。最新は [stage4-timed-turn.md](stage4-timed-turn.md) ／ [code-design.md](code-design.md)。
 
 ---
 
@@ -271,7 +273,7 @@ describe("SerialRobot", () => {
 ## 4. `app/src/main.ts` — 実機切替（スモーク）
 
 実機は自己位置が無いので2D描画はしない。段階3では**通信が通るか**を確かめる小さなスモークを足す。
-（完全自走は `createRunner(serialRobot, ...)` で**シムと同じ**に動くが、旋回には yaw＝**N=24（段階5）**が要る。）
+（完全自走は `createRunner(serialRobot, ...)` で**シムと同じ**に動く。※当初は旋回に yaw＝N=24 を想定していたが、**最終的にタイマー旋回へ変更し yaw/N=24 は不要**。）
 
 ```ts
 // main.ts に追記（抜粋）：実機接続ボタン
