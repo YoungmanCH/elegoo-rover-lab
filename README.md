@@ -437,7 +437,7 @@ elegoo-rover-lab/
 │   ├── src/            #   config / types / domain / protocol / io / sim / runner / ui
 │   ├── package.json / tsconfig.json
 │   └── README.md
-├── arduino/            # UNO層（C++）: 純正スケッチのコピー＋N=24追加（予定）
+├── arduino/            # UNO層（C++）: 純正スケッチのコピー＋MPU6050初期化バグ修正（N=24は不採用＝タイマー旋回）
 ├── docs/
 │   ├── basics/        # Arduino・コードの基礎
 │   │   ├── arduino-basics.md

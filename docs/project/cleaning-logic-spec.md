@@ -5,6 +5,8 @@
 > **だれのために**：実装する自分。ロジックの一次仕様。
 >
 > 前提（[research-route-and-avoidance.md](../reference/research-route-and-avoidance.md)）：直進はファーム側がジャイロYawで補正済み。旋回は時間ベースで不正確なので、**Yaw角度で閉ループ旋回**するのが本仕様の肝。位置情報は無い＝「経路」は動きの決まりとして持つ。
+>
+> **※改訂（最終仕様）**：旋回方式は本稿の **Yaw閉ループ**（`|Δyaw|≥targetDeg`）から **タイマー旋回（turnTicks）** へ**変更済み**。yaw/N=24 は**不採用**で、`State` に `startYaw/targetDeg` は持たない。実機 `read()` は yaw を問い合わせない。以下は設計経緯として残す歴史的仕様。最新は [stage4-timed-turn.md](stage4-timed-turn.md)。
 
 ## 1. 振る舞い（状態機械：2状態だけ）
 
@@ -56,7 +58,7 @@ function step(s: Sensors, st: State, cfg: Config): { cmd: Command; next: State }
 | stop | `{"H":1,"N":3,"D1":3,"D2":0}` | |
 | distanceCm | `{"N":21,"D1":2}` → `{H_<cm>}` | |
 | lifted | `{"N":23}` → `{H_true/false}` | **真偽が反転**（接地→`_true` / 離地→`_false`）⇒ `lifted=(payload==="false")` |
-| yawDeg | **JSONに無い** | → `N=24` 自前追加が必要（§6） |
+| yawDeg | **JSONに無い** | → 不採用（タイマー旋回に変更。実機 `read()` は yaw を問い合わせず 0 固定） |
 
 ## 4. パラメータ（初期値）
 

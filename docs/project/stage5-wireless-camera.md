@@ -254,6 +254,7 @@ document.querySelector("#connect-wifi")!.addEventListener("click", async () => {
 ## 7. つまずきポイント（厳密）
 - **中継を先に起動**＆**先に `ELEGOO-xxxx` に接続**。順序を逆にすると TCP 接続失敗（中継ログに `tcp error`）。
 - **USBは抜く**。UNOのUARTはUSBとESP32で共有。両方つなぐと文字化け。
+- **⚠️ モード切替スイッチを「Cam(Run)」側に**：ボード上の Upload/Cam スイッチが **Upload 側**だと、UNO の UART が CH340(USB)側に繋がって ESP32 はUNOと通信できない。**コマンドは届くのにセンサ応答が一切返らない**（中継ログに `{Heartbeat}` だけ＝`ws timeout` で自走できない）。**WiFi動作は必ず Cam 側**、UNOへスケッチを書き込む時だけ Upload 側へ戻す。（このプロジェクトで実際にハマった真因。コードは無関係だった）
 - **ハートビート必須**：中継が `{Heartbeat}` を毎秒送る。中継を使わず直叩きすると約4秒で切断される。
 - **混在コンテンツ**：アプリは `http://localhost`（非https）なので `http://192.168.4.1:81/stream` を読める。**httpsで配信すると映像はブロックされる**ので、デモは localhost(http) のままで。
 - **タイムアウト**：`TIMEOUT_MS=1500` のままでOK（AP内は低遅延）。`{Heartbeat}` は中継で除去済みなのでブラウザには来ない。
