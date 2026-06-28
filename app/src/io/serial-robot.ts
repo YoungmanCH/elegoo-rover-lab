@@ -6,11 +6,9 @@ import {
     encodeCommand,
     encodeQueryDistance,
     encodeQueryLifted,
-    encodeQueryYaw,
     parseFrame,
     decodeDistance,
-    decodeLifted,
-    decodeYaw
+    decodeLifted
 } from "../protocol/protocol";
 
 const TIMEOUT_MS = 1500;      // 1問い合わせの応答待ち上限
@@ -18,13 +16,14 @@ const TIMEOUT_MS = 1500;      // 1問い合わせの応答待ち上限
 export class SerialRobot implements RobotIO {
     constructor(private tx: Transport) {}
 
-    /** 距離→離地→yaw を順に問い合わせて Sensors を組む。 */
+    /** 距離→離地 を問い合わせて Sensors を組む。yaw は使わないので問い合わせない。 */
     async read(): Promise<Sensors> {
         const distanceCm = decodeDistance(await this.query(encodeQueryDistance("21"), "21"));
-        // 変更後（N=24 が無い間は yaw=0 扱いにして read を成功させる）
-        const yawDeg = await this.query(encodeQueryYaw("24"), "24").then(decodeYaw).catch(() => 0);
         const lifted = decodeLifted(await this.query(encodeQueryLifted("23"), "23"));
-        return { distanceCm, yawDeg, lifted };
+        // yaw(N=24)はファーム未実装、かつ頭脳はタイマー旋回で yaw を使わない。
+        // 問い合わせると応答が来ず毎サイクル TIMEOUT_MS 待たされ、特にWiFiで体感2秒の遅延になる。
+        // よって問い合わせず 0 を返す。
+        return { distanceCm, yawDeg: 0, lifted };
     }
 
     /** 駆動指令を送る。ACK {H_ok} は次の query が H 不一致で読み飛ばす。 */
