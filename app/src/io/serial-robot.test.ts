@@ -56,4 +56,17 @@ describe("serialRobot", () => {
         await new SerialRobot(tx).send({ kind: "forward", speed: 120 });
         expect(JSON.parse(tx.writes[0])).toMatchObject({ N: 3, D1: 3, D2: 120 });
     });
+
+    it("send: aimDeg ありは 首(N=5)→駆動 の順", async () => {
+        const tx = new FakeTransport({});
+        await new SerialRobot(tx).send({ kind: "stop", speed: 0, aimDeg: 150 });
+        expect(JSON.parse(tx.writes[0])).toMatchObject({ N: 5, D1: 1, D2: 150 });   // 先に首
+        expect(JSON.parse(tx.writes[1])).toMatchObject({ N: 4 });                   // 後に停止
+    });
+
+    it("send: aimDeg なしは駆動のみ(サーボを動かさない)", async () => {
+        const tx = new FakeTransport({});
+        await new SerialRobot(tx).send({ kind: "reverse", speed: 80 });
+        expect(tx.writes).toHaveLength(1);
+    });
 });

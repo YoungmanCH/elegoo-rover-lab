@@ -24,8 +24,8 @@ import type { Sensors, Command } from "../types";
 */
 export type Pose = { x: number; y: number; yawDeg: number };
 
-/** 仮想世界の状態。今は姿勢だけ(部屋の形は SimConfig 側)。 */
-export type World = { pose: Pose };
+/** 仮想世界の状態。姿勢＋首の向き(90=正面)。 */
+export type World = { pose: Pose; servoDeg: number }; 
 
 /** シムの物理パラメータ(仮想世界の設定)。config.ts とは責務が別。 */
 export type SimConfig = {
@@ -40,6 +40,9 @@ export type SimConfig = {
 
     /** speed=255 のとき1ティックで回る角度 [度]。 */
     maxTurnDegPerTick: number;
+
+    /** 首の正面角[度]。config.scanCenterDeg と一致させる(ハードコード排除)。 */
+    servoForwardDeg: number;
 }
 
 /** 既定のシム設定(200×150cm の部屋)。 */
@@ -48,6 +51,7 @@ export const defaultSimConfig: SimConfig = {
     roomH: 150,
     maxDriveCmPerTick: 4,
     maxTurnDegPerTick: 8,
+    servoForwardDeg: 90,
 }
 
 /** 値を [min, max] に収める小ヘルパ。 
@@ -67,11 +71,14 @@ function clamp(v: number, min: number, max: number): number {
  */
 export function advance(w: World, cmd: Command, sc: SimConfig): World {
     const p = w.pose;
+    const servoDeg = cmd.aimDeg ?? w.servoDeg;          // 首は独立に反映(省略時は保持)
 
-    if (cmd.kind === "forward") {
-        const d = (cmd.speed / 255) * sc.maxDriveCmPerTick;
+    if (cmd.kind === "forward" || cmd.kind === "reverse") {
+        const sign = cmd.kind === "forward" ? 1: -1;
+        const d = sign * (cmd.speed / 255) * sc.maxDriveCmPerTick;
         const rad = (p.yawDeg * Math.PI) / 180;
         return {
+            servoDeg,
             pose: {
                 ...p,
                 x: clamp(p.x + Math.cos(rad) * d, 0, sc.roomW), // 座標を越えない
@@ -83,16 +90,17 @@ export function advance(w: World, cmd: Command, sc: SimConfig): World {
     if (cmd.kind === "rotateLeft" || cmd.kind === "rotateRight") {
         const a = (cmd.speed / 255) * sc.maxTurnDegPerTick;
         const sign = cmd.kind === "rotateLeft" ? 1 : -1;
-        return { pose: { ...p, yawDeg: p.yawDeg + sign * a }}; // 連続値(折り返さない)
+        return { servoDeg, pose: { ...p, yawDeg: p.yawDeg + sign * a }}; // 連続値(折り返さない)
     }
 
-    return w; // stop: 変化なし
+    return { servoDeg, pose: p };       // stop: 姿勢そのまま・首だけ反映
 }
 
 /** 現在の姿勢から Sensors を観測する。離地はシムでは常に false。 */
 export function readSensors(w: World, sc: SimConfig): Sensors {
+    const aimOffset = w.servoDeg - sc.servoForwardDeg;      // 90→0, 150→+60(左), 30→-60(右)
     return {
-        distanceCm: frontDistance(w.pose, sc),
+        distanceCm: frontDistance(w.pose, aimOffset, sc),
         yawDeg: w.pose.yawDeg,
         lifted: false,
     };
@@ -104,8 +112,8 @@ export function readSensors(w: World, sc: SimConfig): Sensors {
  * 要するに「部屋は単純な長方形だから、ロボットの位置から前方へ線を伸ばして
  * “どの壁を最初に突き抜けるか＝その距離”を求めている（レイキャスト）」
  */
-function frontDistance(p: Pose, sc: SimConfig): number {
-    const rad = (p.yawDeg * Math.PI) / 180;
+function frontDistance(p: Pose, aimOffset: number, sc: SimConfig): number {
+    const rad = ((p.yawDeg + aimOffset) * Math.PI) / 180;
     const dx = Math.cos(rad);  // 向きの x成分(右へどれだけ進むか)
     const dy = Math.sin(rad);  // 向きの y成分(奥へどれだけ進むか)
     let best = Infinity;
