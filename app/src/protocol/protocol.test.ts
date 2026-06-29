@@ -5,6 +5,7 @@ import {
     encodeQueryDistance, 
     encodeQueryLifted, 
     encodeQueryYaw, 
+    encodeServo,
     parseFrame, 
     decodeDistance, 
     decodeYaw, 
@@ -16,6 +17,12 @@ describe("encodeCommand", () => {
         const obj = JSON.parse(encodeCommand({ kind: "forward", speed: 120 }, "1"));
         expect(obj).toMatchObject({ H: "1", N: 3, D1: 3, D2: 120 });
         expect(typeof obj.H).toBe("string");    // 数値だとファームが読めない
+    });
+
+    it("reverse → N=3 D1=4", () => {
+        expect(
+            JSON.parse(encodeCommand({ kind: "reverse", speed: 80 }, "1"))
+        ).toMatchObject({ N: 3, D1: 4, D2: 80 });
     });
 
     it("rotateLeft → D1=1 / rotateRight → D1=2", () => {
@@ -42,6 +49,14 @@ describe("encodeQuery*", () => {
     it("lifted は N=23 / yaw は N=24", () => {
         expect(JSON.parse(encodeQueryLifted("23"))).toMatchObject({ N: 23 });
         expect(JSON.parse(encodeQueryYaw("24"))).toMatchObject({ N: 24 });
+    });
+});
+
+describe("encodeServo", () => {
+    it("encodeServo → N=5 D1=1 D2=angle, H は文字列", () => {
+        const o = JSON.parse(encodeServo(150, "5"));
+        expect(o).toMatchObject({ H: "5", N:5, D1: 1, D2: 150 });
+        expect(typeof o.H).toBe("string");
     });
 });
 

@@ -6,7 +6,7 @@
 import type { Command } from "../types";
 
 // N=3 の D1: 1=左 / 2=右 / 3=前進 / 4=後退 (CMD_CarControl)
-const DRIVE_DIR = { forward: 3, rotateLeft: 1, rotateRight: 2 } as const;
+const DRIVE_DIR = { forward: 3, reverse: 4, rotateLeft: 1, rotateRight: 2 } as const;
 
 /** Command → 送信JSON。H は文字列で送る(ファームが char* で読むため)。 */
 export function encodeCommand(cmd: Command, h: string): string {
@@ -30,6 +30,11 @@ export function encodeQueryLifted(h: string): string {
 /** ヨー角の問い合わせ(N=24 は自前追加)。 */
 export function encodeQueryYaw(h: string): string {
     return JSON.stringify({ H: h, N: 24 });
+}
+
+/** 超音波の首(サーボZ=水平)を angle[度]へ。N=5 D1=1。ファームは D2/10 を10°刻みで使う。 */
+export function encodeServo(angle: number, h: string): string {
+    return JSON.stringify({ H: h, N: 5, D1: 1, D2: angle});
 }
 
 export type Frame = { h: string, payload: string };
