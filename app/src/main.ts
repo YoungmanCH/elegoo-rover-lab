@@ -16,6 +16,7 @@ const ctx = canvas.getContext("2d")!;
 // 左寄り・右向きで開始(部屋の中で適当な初期姿勢)
 const initialWorld: World = {
     pose: { x: 20, y: defaultSimConfig.roomH / 2, yawDeg: 0},
+    servoDeg: defaultConfig.scanCenterDeg,
 };
 const simRobot = new SimRobot(initialWorld, defaultSimConfig);
 const simRunner = createRunner(simRobot, defaultConfig, initialState, () => {
@@ -58,12 +59,13 @@ const wifiBtn = document.querySelector<HTMLButtonElement>("#connect-wifi")!;
 async function connect(openTransport: () => Promise<Transport>, okMsg: string): Promise<boolean> {
     connectBtn.disabled = wifiBtn.disabled = true;      // open 中は多重クリック不可
     try {
-        await session.connect(openTransport, (robot) => createRunner(robot, defaultConfig, initialState, (state, sensors, cmd) => {
-          // 壁検知が効いているか見えるよう、距離・相・指令をログ
-          console.log(
-            `[tick] dist=${sensors.distanceCm}cm phase=${state.phase} left=${state.turnTicksLeft} cmd=${cmd.kind}`,
-          );
-        }));
+        await session.connect(openTransport, (robot) => createRunner(
+            robot, defaultConfig, initialState, (state, sensors, cmd) => {
+                // 壁検知が効いているか見えるよう、距離・相・指令をログ
+                console.log(`[tick] dist=${sensors.distanceCm}cm phase=${state.phase} left=${state.turnTicksLeft} cmd=${cmd.kind}`);
+            }
+        ));
+        await session.robot?.send({ kind: "stop", speed: 0, aimDeg: defaultConfig.scanCenterDeg });
         console.log(okMsg);
         return true;
     } catch (e) {

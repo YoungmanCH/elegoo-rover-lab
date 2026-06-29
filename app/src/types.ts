@@ -18,20 +18,30 @@ export type Sensors = {
     lifted: boolean;
 }
 
+/** 旋回の向き。 */
+export type TurnDir = "left" | "right";
+
+/** 制御の相。drive=直進 / scanLeft|scanRight=首振り測定 / turn=旋回 / reverse=後退。 */
+export type Phase = "drive" | "scanLeft" | "scanRight" | "turn" | "reverse";
+
 /**
  * ロボットへ渡す“素の”駆動指令。判断結果をここに表すだけで、
  * JSON への変換は protocol 層（段階3）の責務。
  *   forward     … 直進（ジャイロ直進は UNO 側が担当）
+ *   reverse     … 後退 
  *   rotateLeft  … その場・左旋回
  *   rotateRight … その場・右旋回
  *   stop        … 停止（持ち上げ時など）
  */
 export type Command = {
-    kind: "forward" | "rotateLeft" | "rotateRight" | "stop";
+    kind: "forward" | "reverse" | "rotateLeft" | "rotateRight" | "stop";
 
     /** モータPWMデューティ(0–255, 8bit)。物理速度ではない。stop は 0。
     *  ※自走系モードでは実機側が 180 で上限クランプ(firmware 既定)。 */
     speed: number;
+
+    /** 指定時、超音波の首(サーボZ)をこの角度[10..170, 10刻み]へ。省略時は動かさない。 */
+    aimDeg?: number;
 }
 
 /**
@@ -40,10 +50,19 @@ export type Command = {
  *   phase="turn"  … 旋回中。startYaw からの差が targetDeg に達したら drive へ戻る
  */
 export type State = {
-    phase: "drive" | "turn";
+    phase: Phase;
 
     /** turn 中の残り tick 数。drive では 0。1 以下になった tick で直進へ戻る(タイマ旋回)。 */
     turnTicksLeft: number;
+
+    /** scanLeft で測った左距離[cm]。未測定 -1。 */
+    leftCm: number;
+
+    /** scan で決めた今回の旋回向き。 */
+    turnDir: TurnDir;
+
+    /** reverse 中の残り tick。 */
+    reverseTicksLeft: number;
 }
 
 /**
@@ -72,6 +91,27 @@ export type Config = {
 
     /** 離地(持ち上げ)で安全停止するか。実機の離地センサが床を誤検知する場合は false に。 */
     liftStop: boolean;
+
+    /** 首を左に向ける角度[度]。10の倍数。体の左右と一致させる(N3)。 */
+    scanLeftDeg: number;
+
+    /** 首を右に向ける角度[度]。10の倍数。体の左右と一致させる(N3)。 */
+    scanRightDeg: number;
+
+    /** スキャン時の首の正面角[度]。10の倍数。 */
+    scanCenterDeg: number;
+
+    /** これ以上(or 0=エコー無し)で「空き」と見なす距離[cm]。wallCm より大きく。 */
+    openCm: number;
+
+    /** 後退の速度。 */
+    reverseSpeed: number;
+
+    /** 両側塞がり時に後退する tick 数。 */
+    reverseTicks: number;
+
+    /** 180度旋回の tick 数(≒turnTicks×2)。 */
+    turnTicks180: number;
 }
 
 export type StepResult = {

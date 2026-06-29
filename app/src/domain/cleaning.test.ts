@@ -11,63 +11,97 @@ function sensors(over: Partial<Sensors> = {}): Sensors {
 // テスト用設定(turnTicks=3・左回りを既定に。over で上書き)
 function config(over: Partial<Config> = {}): Config {
     return {
-        wallCm: 20, turnTicks: 3, turnDir: "left",
-        driveSpeed: 120, turnSpeed: 150, tickMs: 120, liftStop: false, ...over,
+        wallCm: 20, 
+        turnTicks: 6,
+        turnDir: "left",
+        driveSpeed: 80, 
+        turnSpeed: 100, 
+        tickMs: 120, 
+        liftStop: false,
+        scanLeftDeg: 150,
+        scanRightDeg: 30,
+        scanCenterDeg: 90,
+        openCm: 30,
+        reverseSpeed: 80,
+        reverseTicks: 3,
+        turnTicks180: 12, 
+        ...over,
     };
 }
 
-const drive: State = { phase: "drive", turnTicksLeft: 0 };
+function drive(over: Partial<State> = {}): State  {
+    return { phase: "drive", turnTicksLeft: 0, leftCm: -1, turnDir: "left", reverseTicksLeft: 0, ...over };
+}
 
-describe("step(タイマ旋回)", () => {
-    it("drive中・壁が遠い → 直進を継続(drive のまま)", () => {
-        const r = step(sensors({ distanceCm: 50 }), drive, config());
-        expect(r.cmd).toEqual({ kind: "forward", speed: 120 });
-        expect(r.next).toEqual({ phase: "drive", turnTicksLeft: 0 });
-    });
-
-    it("drive中・壁に到達(左回り) → 左旋回を開始し turn へ(turnTicks をセット)", () => {
-        const r = step(sensors({ distanceCm: 10 }), drive, config({ turnTicks: 3 }));
-        expect(r.cmd).toEqual({ kind: "rotateLeft", speed: 150 });
-        expect(r.next).toEqual({ phase: "turn", turnTicksLeft: 3 });
-    });
-
-    it("drive中・壁に到達(右回り) → 右旋回を開始", () => {
-        const r = step(sensors({ distanceCm: 10 }), drive, config({ turnDir: "right" }));
-        expect(r.cmd.kind).toBe("rotateRight");
-        expect(r.next.phase).toBe("turn");
-    });
-
-    it("drive中・距離0(エコー無し=遠い) → 壁とみなさず直進", () => {
-        const r = step(sensors({ distanceCm: 0 }), drive, config());
-        expect(r.cmd).toEqual({ kind: "forward", speed: 120 });
+describe("step(スキャン)", () => {
+    it("drive: 壁が遠い → forward(継続)", () => {
+        const r = step(sensors({ distanceCm: 50 }), drive(), config());
+        expect(r.cmd).toEqual({ kind: "forward", speed: 80 });
         expect(r.next.phase).toBe("drive");
     });
 
-    it("turn中・残りtickあり → 旋回を継続し残りtickを1減らす", () => {
-        const turning: State = { phase: "turn", turnTicksLeft: 3 };
-        const r = step(sensors({ distanceCm: 10 }), turning, config());
-        expect(r.cmd).toEqual({ kind: "rotateLeft", speed: 150 });
-        expect(r.next).toEqual({ phase: "turn", turnTicksLeft: 2 });
+    it("drive: 距離0(エコー無し=遠い) → 壁とみなさず直進", () => {
+        expect(step(sensors({ distanceCm: 0 }), drive(), config()).cmd.kind).toBe("forward");
     });
 
-    it("turn中・残り1tick → 直進に戻る(drive へ)", () => {
-        const turning: State = { phase: "turn", turnTicksLeft: 1 };
-        const r = step(sensors({ distanceCm: 10 }), turning, config());
-        expect(r.cmd).toEqual({ kind: "forward", speed: 120 });
-        expect(r.next).toEqual({ phase: "drive", turnTicksLeft: 0 });
+    it("drive: 壁 → 停止して首を左へ・scanLeft へ", () => {
+        const r = step(sensors({ distanceCm: 10 }), drive(), config());
+        expect(r.cmd).toEqual({ kind: "stop", speed: 0, aimDeg: 150 });
+        expect(r.next).toMatchObject({ phase: "scanLeft", leftCm: -1 });
     });
 
-    it("持ち上げ → 停止(liftStop=true のとき・相は保持)", () => {
-        const turning: State = { phase: "turn", turnTicksLeft: 2 };
-        const r = step(sensors({ lifted: true }), turning, config({ liftStop: true }));
+    it("scanLeft: 左を測ったら記録して首を右へ・scanRight へ", () => {
+        const r = step(sensors({ distanceCm: 55 }), drive({ phase: "scanLeft" }), config());
+        expect(r.cmd).toEqual({ kind: "stop", speed: 0, aimDeg: 30 });
+        expect(r.next).toMatchObject({ phase: "scanRight", leftCm: 55 });
+    });
+
+    it("scanRight: 両側とも壁 → 後退して reverse相へ・首は正面へ戻す", () => {
+        const r = step(sensors({ distanceCm: 12 }), drive({ phase: "scanRight", leftCm: 10 }), config());
+        expect(r.cmd).toEqual({ kind: "reverse", speed: 80, aimDeg: 90 });
+        expect(r.next).toMatchObject({ phase: "reverse", reverseTicksLeft: 3, turnDir: "left" });
+    });
+
+    it("scanRight: 左が空き右が壁 → 左へ旋回開始・首は正面へ戻す", () => {
+        const r = step(sensors({ distanceCm: 10 }), drive({ phase: "scanRight", leftCm: 80 }), config());
+        expect(r.cmd).toEqual({ kind: "rotateLeft", speed: 100, aimDeg: 90 });
+        expect(r.next).toMatchObject({ phase: "turn", turnDir: "left", turnTicksLeft: 6 });
+    });
+
+    it("scanRight: 右が空き左が壁 → 右へ旋回", () => {
+        const r = step(sensors({ distanceCm: 80 }), drive({ phase: "scanRight", leftCm: 10 }), config());
+        expect(r.cmd.kind).toBe("rotateRight");
+        expect(r.next).toMatchObject({ phase: "turn", turnDir: "right" });
+    });
+
+    it("reverse: 後退の残りが2以上 → 後退を続ける", () => {
+        const r = step(sensors(), drive({ phase: "reverse", reverseTicksLeft: 3 }), config());
+        expect(r.cmd.kind).toBe("reverse");
+        expect(r.next.reverseTicksLeft).toBe(2);
+    });
+
+    it("reverse: 後退の残りが1以下 → 180度旋回へ(turnTicks180)", () => {
+        const r = step(sensors(), drive({ phase: "reverse", reverseTicksLeft: 1, turnDir: "left" }), config());
+        expect(r.cmd.kind).toBe("rotateLeft");
+        expect(r.next).toMatchObject({ phase: "turn", turnTicksLeft: 12 });
+    });
+
+    it("turn: 旋回の残りが2以上 → 続ける / 1以下 → forward(drive復帰)", () => {
+        expect(step(sensors(), drive({ phase: "turn", turnTicksLeft: 6, turnDir: "left" }), config()).next.turnTicksLeft).toBe(5);
+        expect(step(sensors(), drive({ phase: "turn", turnTicksLeft: 1, turnDir: "left" }), config()).cmd.kind).toBe("forward");
+    });
+
+    it("持ち上げ（離地） → 停止(liftStop=true のとき・相は保持)", () => {
+        const st = drive({ phase: "scanRight", leftCm: 40 });
+        const r = step(sensors({ lifted: true }), st, config({ liftStop: true }));
         expect(r.cmd).toEqual({ kind: "stop", speed: 0 });
-        expect(r.next).toEqual(turning);  // 相は変えない
+        expect(r.next).toEqual(st);
     });
 
     it("純粋関数: 入力の state を書き換えない", () => {
-        const turning: State = { phase: "turn", turnTicksLeft: 3 };
-        const snapshot = { ...turning };
-        step(sensors({ distanceCm: 10 }), turning, config());
-        expect(turning).toEqual(snapshot);  // 元の state は不変
+        const st = drive({ phase: "turn", turnTicksLeft: 6, turnDir: "left" });
+        const snap = structuredClone(st);
+        step(sensors({ distanceCm: 10 }), st, config());
+        expect(st).toEqual(snap);
     });
 });

@@ -6,6 +6,7 @@ import {
     encodeCommand,
     encodeQueryDistance,
     encodeQueryLifted,
+    encodeServo,
     parseFrame,
     decodeDistance,
     decodeLifted
@@ -28,7 +29,8 @@ export class SerialRobot implements RobotIO {
 
     /** 駆動指令を送る。ACK {H_ok} は次の query が H 不一致で読み飛ばす。 */
     async send(cmd: Command): Promise<void> {
-        await this.tx.write(encodeCommand(cmd, cmd.kind === "stop" ? "4" : "3"));
+        if (cmd.aimDeg !== undefined) await this.tx.write(encodeServo(cmd.aimDeg, "5")); // 首→
+        await this.tx.write(encodeCommand(cmd, cmd.kind === "stop" ? "4" : "3"));        // 駆動
     }
 
     /** request を送り、H が一致する応答 payload を返す。エコー/ACK/別センサは読み飛ばす。 */

@@ -5,7 +5,8 @@ import { defaultSimConfig } from "./model";
 import type { World } from "./model";
 
 const sc = defaultSimConfig;
-const world = (x: number, y: number, yawDeg: number): World => ({  pose: { x, y, yawDeg }});
+const servoDefaultConfig = 90
+const world = (x: number, y: number, yawDeg: number, servoDeg=servoDefaultConfig): World => ({ pose: { x, y, yawDeg }, servoDeg });
 
 describe("SimRobot", () => {
     it("read は現在の姿勢からセンサを返す", async () => {
