@@ -1,27 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { isOpen, clearance, chooseEscape } from "./scan-decision";
 import type { EscapeParams } from "./scan-decision";
-// import type { Config } from "../types";
 
 const params = (o: Partial<EscapeParams> = {}): EscapeParams => ({ openCm: 30, turnDir: "left", ...o });
-
-// const config = (o: Partial<Config> = {}): Config => ({
-//     wallCm: 20,
-//     turnTicks: 6,
-//     turnDir: "left",
-//     driveSpeed: 80,
-//     turnSpeed: 100,
-//     tickMs: 120,
-//     liftStop: false,
-//     scanLeftDeg: 150,
-//     scanRightDeg: 30,
-//     scanCenterDeg: 90,
-//     openCm: 30,
-//     reverseSpeed: 80,
-//     reverseTicks: 3,
-//     turnTick180: 12,
-//     ...o,
-// });
 
 describe("isOpen", () => {
     it("0(エコー無し)は空き", () => expect(isOpen(0, 30)).toBe(true));

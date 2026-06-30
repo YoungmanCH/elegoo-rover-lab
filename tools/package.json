@@ -2,5 +2,16 @@
   "name": "ws-bridge",
   "private": true,
   "type": "module",
-  "dependencies": { "ws": "^8.18.0" }
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "test": "node --test lib/",
+    "typecheck": "tsc -p tsconfig.json"
+  }
 }

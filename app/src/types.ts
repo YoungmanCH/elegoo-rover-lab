@@ -18,6 +18,25 @@ export type Sensors = {
     lifted: boolean;
 }
 
+/** ロボットの姿勢。x,y は cm, yawDeg は度(0は+x方向, 反時計回りが +)。 
+   yawDeg は度（＝向き）。:
+
+  (a) 0° は +x方向（右）を向いている
+     +y(奥)
+      ↑
+   ───┼───→ +x   ← yaw=0° はこの向き(右)
+      │(0,0)
+      
+  (b) 反時計回り（左）が ＋ に増える
+         yaw=90°(上)
+            ↑
+   yaw=180°←●→ yaw=0°(右)
+            ↓
+         yaw=-90°(下)
+  左に首を振ると角度が増え、右に振ると減る。
+*/
+export type Pose = { x: number; y: number; yawDeg: number };
+
 /** 旋回の向き。 */
 export type TurnDir = "left" | "right";
 
@@ -117,4 +136,57 @@ export type Config = {
 export type StepResult = {
     cmd: Command;
     next: State;
+}
+
+/** PWM→物理量の校正（推定の根拠）。 */
+export type MotionModel = {
+    forwardCmPerSec: number;    // forward(driveSpeed) の実速度[cm/s]。
+    reverseCmPerSec: number;    // reverse(reverseSpeed) の実速度[cm/s]。
+    turnDegPerSec: number;      // rotate(turnSpeed) の実角速度[deg/s]。
+    refDriveSpeed: number;      // 上記 cm/s を測った前進/後退PWM(速度スケール基準)
+    refTurnSpeed: number;       // 上記 deg/s を測った旋回PWM
+}
+
+/** makeSample の入力：1tick分の生の観測（recorder が毎tick組み立てて渡す）。precision は別引数(config由来)。 */
+export type TickObservation = {
+    t: number;                  // セッション基準 t0 からの相対[ms]（動画と同じ時間軸）
+    dt: number;                 // 直前tickからの実経過[ms]（推定に使った値）
+    cmd: Command;
+    sensors: Sensors;
+    phase: State["phase"];
+    pose: Pose;                 // sim=真値 / 実機=推定
+    estimated: boolean;         // true=推定(実機) / false=真値(sim)
+}
+
+/** 1tick分の記録（軌跡ログの最小単位）。 */
+export type TickSample = {
+    t: number;                  // セッション基準 t0 からの相対[ms]（動画と同じ時間軸）
+    dt: number;                 // 直前tickからの実経過[ms]（推定に使った値）
+    cmdKind: Command["kind"];
+    speed: number;
+    distanceCm: number;
+    lifted: boolean;
+    phase: State["phase"];
+    pose: Pose;                 // sim=真値 / 実機=推定
+    estimated: boolean;         // true=推定(実機) / false=真値(sim)
+}
+
+/** 軌跡ログのヘッダ（自己記述的：再現に要る文脈を入れる）。 */
+export type TrajectoryHeader = {
+    v: number;
+    sessionId: string;
+    startedAtIso: string;
+    source: "sim" | "usb" | "wifi";
+    config: Config;
+    motionModel: MotionModel;
+    pose0: Pose;
+    videoFile: string | null;   // カメラ録画(stage8)と紐付け。無ければ null
+}
+
+/** カメラ録画/ライブ表示の設定（値は config.ts に集約）。 */
+export type RecordingConfig = {
+    directStreamUrl: string;    // ESP32 直 MJPEG（ex: http://192.168.4.1:81/stream）
+    proxyStreamUrl: string;     // プロキシ経由（ex: http://localhost:8082/stream）
+    controlUrl: string;         // 録画制御（ex: http://localhost:8082）
+    useProxy: boolean;          // true=プロキシ経由（録画・CORS解決） / false=直URL
 }
