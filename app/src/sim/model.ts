@@ -3,26 +3,10 @@
 // World            … 仮想世界の状態(ロボットの姿勢)。部屋は SimConfig の矩形で表す。
 // advance()        … 1ティック分、指令に従って姿勢を進める。
 // readSensors()    … 現在の姿勢から Sensors(前方距離/yaw/離地)を作る。
-import type { Sensors, Command } from "../types";
+import type { Sensors, Command, Pose } from "../types";
+import { integratePose } from "../domain/kinematics";
 
-/** ロボットの姿勢。x,y は cm, yawDeg は度(0は+x方向, 反時計回りが +)。 
-   yawDeg は度（＝向き）。:
 
-  (a) 0° は +x方向（右）を向いている
-     +y(奥)
-      ↑
-   ───┼───→ +x   ← yaw=0° はこの向き(右)
-      │(0,0)
-      
-  (b) 反時計回り（左）が ＋ に増える
-         yaw=90°(上)
-            ↑
-   yaw=180°←●→ yaw=0°(右)
-            ↓
-         yaw=-90°(下)
-  左に首を振ると角度が増え、右に振ると減る。
-*/
-export type Pose = { x: number; y: number; yawDeg: number };
 
 /** 仮想世界の状態。姿勢＋首の向き(90=正面)。 */
 export type World = { pose: Pose; servoDeg: number }; 
@@ -70,30 +54,29 @@ function clamp(v: number, min: number, max: number): number {
  *   stop        … 何もしない
  */
 export function advance(w: World, cmd: Command, sc: SimConfig): World {
-    const p = w.pose;
     const servoDeg = cmd.aimDeg ?? w.servoDeg;          // 首は独立に反映(省略時は保持)
 
     if (cmd.kind === "forward" || cmd.kind === "reverse") {
         const sign = cmd.kind === "forward" ? 1: -1;
-        const d = sign * (cmd.speed / 255) * sc.maxDriveCmPerTick;
-        const rad = (p.yawDeg * Math.PI) / 180;
+        const move = sign * (cmd.speed / 255) * ( sc.maxDriveCmPerTick);
+        const p = integratePose(w.pose, move, 0);
         return {
             servoDeg,
             pose: {
-                ...p,
-                x: clamp(p.x + Math.cos(rad) * d, 0, sc.roomW), // 座標を越えない
-                y: clamp(p.y + Math.sin(rad) * d, 0, sc.roomH),
+                x: clamp(p.x, 0, sc.roomW),
+                y: clamp(p.y, 0, sc.roomH),
+                yawDeg: p.yawDeg,
             },
         };
     }
 
     if (cmd.kind === "rotateLeft" || cmd.kind === "rotateRight") {
         const a = (cmd.speed / 255) * sc.maxTurnDegPerTick;
-        const sign = cmd.kind === "rotateLeft" ? 1 : -1;
-        return { servoDeg, pose: { ...p, yawDeg: p.yawDeg + sign * a }}; // 連続値(折り返さない)
+        const dir = cmd.kind === "rotateLeft" ? 1 : -1;
+        return { servoDeg, pose: integratePose(w.pose, 0, dir * a)}; // 連続値(折り返さない)
     }
 
-    return { servoDeg, pose: p };       // stop: 姿勢そのまま・首だけ反映
+    return { servoDeg, pose: w.pose };       // stop: 姿勢そのまま・首だけ反映
 }
 
 /** 現在の姿勢から Sensors を観測する。離地はシムでは常に false。 */
