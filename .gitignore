@@ -5,3 +5,6 @@ dist/
 # logs / OS
 *.log
 .DS_Store
+
+# editor
+.vscode/

@@ -12,7 +12,7 @@
 
 | # | 増分 | ファイル | テスト |
 |---|---|---|---|
-| 1 | 型追加（`TickSample` / `TrajectoryHeader`） | `types.ts` | — |
+| 1 | 型追加（`TickObservation` / `TickSample` / `TrajectoryHeader`） | `types.ts` | — |
 | 2 | `session-meta`（`newSessionId` / `makeHeader`） | `telemetry/session-meta.ts` | **先に** |
 | 3 | `sample`（`makeSample`） | `telemetry/sample.ts` | **先に** |
 | 4 | `trajectory`（`createTrajectory`） | `telemetry/trajectory.ts` | **先に** |
@@ -23,7 +23,12 @@
 ## 1. 増分1：型追加（`types.ts`）
 
 ```ts
-/** 1tick分の記録（軌跡ログの最小単位）。 */
+/** 1tick分の生の観測（makeSample の入力）。recorder が毎tick組み立てる。cmd/sensors はネストのまま。 */
+export type TickObservation = {
+    t: number; dt: number; cmd: Command; sensors: Sensors; phase: State["phase"]; pose: Pose; estimated: boolean;
+};
+
+/** 1tick分の記録（軌跡ログの最小単位＝makeSample の出力）。TickObservation を平坦化＋丸めした形。 */
 export type TickSample = {
     t: number;            // セッション基準 t0 からの相対[ms]（動画と同じ時間軸）
     dt: number;           // 直前tickからの実経過[ms]（推定に使った値）
@@ -61,7 +66,7 @@ import { newSessionId, makeHeader } from "./session-meta";   // ← RED
 import type { Config, MotionModel } from "../types";
 
 const cfg = { wallCm: 20 } as unknown as Config;             // 本テストでは中身を問わない(素通し)
-const mm: MotionModel = { driveCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100 };
+const mm: MotionModel = { forwardCmPerSec: 20, reverseCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100 };
 
 describe("newSessionId", () => {
     it("ISO の : と . を - に置換しファイル名安全にする", () => {
@@ -79,6 +84,15 @@ describe("makeHeader", () => {
         expect(h.videoFile).toBeNull();
         expect(h.sessionId).toBe("s1");
         expect(h.config).toBe(cfg);     // 素通し(スナップショット)
+        expect(h.source).toBe("wifi");  // source も素通し。makeHeader は source で分岐しない＝1値で十分
+    });
+    it("videoFile を渡せばそのまま保持する(動画連携の契約)", () => {
+        const h = makeHeader({
+            sessionId: "s1", startedAtIso: "2026-06-28T12:00:00.000Z", source: "wifi",
+            config: cfg, motionModel: mm, pose0: { x: 20, y: 75, yawDeg: 0 },
+            videoFile: "rec.mp4",
+        });
+        expect(h.videoFile).toBe("rec.mp4");   // a.videoFile ?? null の「指定時」分岐(既定 null の対)
     });
 });
 ```
@@ -142,17 +156,15 @@ describe("makeSample", () => {
 ### ② GREEN
 `app/src/telemetry/sample.ts`
 ```ts
-// sample.ts — 観測値を1tickの記録(TickSample)に組むだけ(純)。pose は precision 桁に丸める。
-import type { TickSample, Command, Sensors, State, Pose } from "../types";
+// sample.ts — 観測(TickObservation)を1tickの記録(TickSample)に組むだけ(純)。pose は precision 桁に丸める。
+import type { TickSample, TickObservation } from "../types";   // 型は types.ts に集約
 
 function round(v: number, p: number): number {
     const k = 10 ** p;
     return Math.round(v * k) / k;
 }
 
-export function makeSample(o: {
-    t: number; dt: number; cmd: Command; sensors: Sensors; phase: State["phase"]; pose: Pose; estimated: boolean;
-}, precision: number): TickSample {
+export function makeSample(o: TickObservation, precision: number): TickSample {
     return {
         t: o.t, dt: o.dt,
         cmdKind: o.cmd.kind, speed: o.cmd.speed,

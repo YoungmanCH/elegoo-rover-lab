@@ -2,7 +2,7 @@
 
 > **ゴール**：軌跡の土台＝**姿勢 `Pose`** と「移動量・回転量 → 新 Pose」の**運動学カーネル `integratePose`** を用意する。シムの `advance()` をこのカーネルへ**委譲**し、**シム(真値)と実機(推定)が同じ運動方程式を共有**する（モデルベース）。
 > **TDDの作法（本シリーズ共通）**：1増分ずつ「**①テストを先に書く(RED) → ②最小実装(GREEN) → ③リファクタ**」。本書のコードは設計スケッチ。手を動かす順序そのものを書く。
-> **前提**：[stage6](stage6-scan-and-reverse.md) まで（未実装でも可）。本書は**現行 `types.ts`**（`Command = forward|rotateLeft|rotateRight|stop`）に対して書く。全体設計は [design-trajectory-recording-architecture.md](../reference/design-trajectory-recording-architecture.md)。
+> **前提**：[stage6](stage6-scan-and-reverse.md) 適用後。`Command = forward|reverse|rotateLeft|rotateRight|stop`（＋首サーボ用 `aimDeg?`）、`World = { pose; servoDeg }`。`aimDeg` は姿勢に影響しない（首だけ）。全体設計は [design-trajectory-recording-architecture.md](../reference/design-trajectory-recording-architecture.md)。
 > **このstageの位置**：7a(本書) → [7b 推定](stage7b-pose-estimation.md) → [7c 軌跡ログ](stage7c-trajectory-log.md) → [7d 結線・保存・描画](stage7d-recorder-and-ui.md)。
 > **編集はあなた**。括弧は半角。
 
@@ -114,22 +114,24 @@ export function integratePose(pose: Pose, moveCm: number, turnDeg: number): Pose
 import { integratePose } from "../domain/kinematics";
 
 // before の cos/sin 直書きをやめ、カーネル＋壁クランプに分解する。
+// stage6 適用後: forward/reverse を符号で合流し、servoDeg(首)は姿勢と独立に持ち回す。
 export function advance(w: World, cmd: Command, sc: SimConfig): World {
-    if (cmd.kind === "forward") {
-        const move = (cmd.speed / 255) * sc.maxDriveCmPerTick;
+    const servoDeg = cmd.aimDeg ?? w.servoDeg;          // 首は姿勢に効かない(省略時は保持)
+    if (cmd.kind === "forward" || cmd.kind === "reverse") {
+        const sign = cmd.kind === "forward" ? 1 : -1;
+        const move = sign * (cmd.speed / 255) * sc.maxDriveCmPerTick;
         const p = integratePose(w.pose, move, 0);
-        return { pose: { x: clamp(p.x, 0, sc.roomW), y: clamp(p.y, 0, sc.roomH), yawDeg: p.yawDeg } };  // ★壁クランプは sim だけ
+        return { servoDeg, pose: { x: clamp(p.x, 0, sc.roomW), y: clamp(p.y, 0, sc.roomH), yawDeg: p.yawDeg } };  // ★壁クランプは sim だけ
     }
     if (cmd.kind === "rotateLeft" || cmd.kind === "rotateRight") {
         const a = (cmd.speed / 255) * sc.maxTurnDegPerTick;
         const dir = cmd.kind === "rotateLeft" ? 1 : -1;
-        return { pose: integratePose(w.pose, 0, dir * a) };
+        return { servoDeg, pose: integratePose(w.pose, 0, dir * a) };
     }
-    return w;  // stop
+    return { servoDeg, pose: w.pose };  // stop: 姿勢そのまま・首だけ反映
 }
 ```
-→ `npm run test:run`：**既存 model.test.ts が緑のまま**＝OK。
-> （[stage6](stage6-scan-and-reverse.md) を適用済みなら `reverse` と `servoDeg` も同じ要領でカーネルへ委譲する。）
+→ `npm run test:run`：**既存 model.test.ts（reverse/servo 含む）が緑のまま**＝振る舞い不変。`reverse` は負の `move`、`aimDeg` は `servoDeg` に反映するだけ＝カーネルは姿勢のみを担う。
 
 ---
 
