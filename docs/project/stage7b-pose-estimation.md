@@ -1,8 +1,8 @@
-# 段階7b：影 dead-reckoning（推定の現在地）— TDD
+# 段階7b：推測航法（dead-reckoning）で推定現在地を出す — TDD
 
-> **ゴール**：実機の「**推定の現在地**」を出す影推定器を TDD で作る。`指令 + 実dt → 移動量(commandToDelta) → Pose(integratePose)`。エンコーダが無いので**ドリフトする＝推定**（UIで必ず明示）。
+> **ゴール**：実機の「**推定の現在地**」を出す推測航法推定器を TDD で作る。`指令 + 実dt → 移動量(commandToDelta) → Pose(integratePose)`。エンコーダが無いので**ドリフトする＝推定**（UIで必ず明示）。
 > **モデルベース**：[7a](stage7a-pose-and-kinematics.md) の運動学カーネルを再利用。シム(真値)と実機(推定)で同じ式。
-> **前提**：[7a](stage7a-pose-and-kinematics.md) 完了（`integratePose` / `Pose` in `types.ts`）。本書は現行 `Command = forward|rotateLeft|rotateRight|stop` に対して書く。
+> **前提**：[7a](stage7a-pose-and-kinematics.md) 完了（`integratePose` / `Pose` in `types.ts`）。stage6 適用後の `Command = forward|reverse|rotateLeft|rotateRight|stop`（＋`aimDeg?`）に対して書く。`aimDeg` は首サーボ用で**本体姿勢に効かない**ので推定では無視する。
 > **このstageの位置**：[7a](stage7a-pose-and-kinematics.md) → 7b(本書) → [7c](stage7c-trajectory-log.md) → [7d](stage7d-recorder-and-ui.md)。
 > **編集はあなた**。括弧は半角。
 
@@ -25,13 +25,14 @@
 ```ts
 /** PWM→物理量の校正（推定の唯一の根拠。値は config.ts で集約）。 */
 export type MotionModel = {
-    driveCmPerSec: number;   // forward(driveSpeed) の実速度[cm/s]。要実測(§4)
+    forwardCmPerSec: number;   // forward(driveSpeed) の実速度[cm/s]。要実測(§4)
+    reverseCmPerSec: number; // reverse(reverseSpeed) の実速度[cm/s]。要実測(§4)
     turnDegPerSec: number;   // rotate(turnSpeed) の実角速度[deg/s]。要実測(§4)
-    refDriveSpeed: number;   // 上記 cm/s を測った前進PWM(速度スケール基準)
+    refDriveSpeed: number;   // 上記 cm/s を測った前進/後退PWM(速度スケール基準)
     refTurnSpeed: number;    // 上記 deg/s を測った旋回PWM
 };
 ```
-> （[stage6](stage6-scan-and-reverse.md) の `reverse` を入れたら `reverseCmPerSec` を足し、§2 の `commandToDelta` に `case "reverse"` を1つ追加する。）
+> `reverse` は前進と同じ式で符号反転（速度スケールは `refDriveSpeed` を共用）。`aimDeg`（首）は姿勢に効かないので推定では無視。
 
 ---
 
@@ -45,12 +46,12 @@ import { commandToDelta } from "./motion-model";        // ← まだ無い。RE
 import type { MotionModel, Command } from "../types";
 
 const mm = (over: Partial<MotionModel> = {}): MotionModel => ({
-    driveCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100, ...over,
+    forwardCmPerSec: 20, reverseCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100, ...over,
 });
 const cmd = (kind: Command["kind"], speed: number): Command => ({ kind, speed });
 
 describe("commandToDelta（dt と速度で移動量を決める）", () => {
-    it("forward・基準速・dt=1000ms → moveCm=driveCmPerSec, turnDeg=0", () => {
+    it("forward・基準速・dt=1000ms → moveCm=forwardCmPerSec, turnDeg=0", () => {
         expect(commandToDelta(cmd("forward", 80), 1000, mm())).toEqual({ moveCm: 20, turnDeg: 0 });
     });
     it("rotateLeft → turnDeg 正・moveCm=0", () => {
@@ -58,6 +59,9 @@ describe("commandToDelta（dt と速度で移動量を決める）", () => {
     });
     it("rotateRight → turnDeg 負", () => {
         expect(commandToDelta(cmd("rotateRight", 100), 1000, mm()).turnDeg).toBeCloseTo(-90);
+    });
+    it("reverse → moveCm 負・turnDeg=0", () => {
+        expect(commandToDelta(cmd("reverse", 80), 1000, mm())).toEqual({ moveCm: -20, turnDeg: 0 });
     });
     it("stop → {0,0}", () => {
         expect(commandToDelta(cmd("stop", 0), 1000, mm())).toEqual({ moveCm: 0, turnDeg: 0 });
@@ -79,11 +83,14 @@ describe("commandToDelta（dt と速度で移動量を決める）", () => {
 // 速度(PWM)は基準値に対して線形と近似(ラフ。校正で吸収)。数値は MotionModel から受ける。
 import type { Command, MotionModel } from "../types";
 
+// 戻り値は「1tick分の移動量cm・回転量deg（運動の差分）」。
 export function commandToDelta(cmd: Command, dtMs: number, m: MotionModel): { moveCm: number; turnDeg: number } {
     const sec = dtMs / 1000;
     switch (cmd.kind) {
         case "forward":
-            return { moveCm: m.driveCmPerSec * (cmd.speed / m.refDriveSpeed) * sec, turnDeg: 0 };
+            return { moveCm: m.forwardCmPerSec * (cmd.speed / m.refDriveSpeed) * sec, turnDeg: 0 };
+        case "reverse":
+            return { moveCm: -m.reverseCmPerSec * (cmd.speed / m.refDriveSpeed) * sec, turnDeg: 0 };
         case "rotateLeft":
             return { moveCm: 0, turnDeg: +m.turnDegPerSec * (cmd.speed / m.refTurnSpeed) * sec };
         case "rotateRight":
@@ -93,11 +100,11 @@ export function commandToDelta(cmd: Command, dtMs: number, m: MotionModel): { mo
     }
 }
 ```
-→ 緑。`switch` は現行 `Command` 全種を網羅（exhaustive）。**stage6 で `reverse` が増えると TS が未網羅を指摘**してくれる＝TDDの安全網。
+→ 緑。`switch` は `Command` の全 `kind`（forward/reverse/rotateLeft/rotateRight/stop）を網羅。`aimDeg`（首）は姿勢に効かないので無視。`kind` を増やすと TS が未網羅を指摘してくれる＝TDDの安全網。
 
 ---
 
-## 3. 増分3：`estimateStep`（影 dead-reckoning の1tick）
+## 3. 増分3：`estimateStep`（推測航法(dead-reckoning) の1tick）
 
 ### ① テストを先に書く（RED）
 `app/src/localization/pose-estimator.test.ts`
@@ -106,7 +113,7 @@ import { describe, it, expect } from "vitest";
 import { estimateStep } from "./pose-estimator";        // ← まだ無い。RED
 import type { Pose, MotionModel, Command } from "../types";
 
-const mm: MotionModel = { driveCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100 };
+const mm: MotionModel = { forwardCmPerSec: 20, reverseCmPerSec: 20, turnDegPerSec: 90, refDriveSpeed: 80, refTurnSpeed: 100 };
 const fwd: Command = { kind: "forward", speed: 80 };
 const left: Command = { kind: "rotateLeft", speed: 100 };
 const origin: Pose = { x: 0, y: 0, yawDeg: 0 };
@@ -146,7 +153,7 @@ describe("estimateStep（commandToDelta → integratePose の合成）", () => {
 ### ② 最小実装でGREEN
 `app/src/localization/pose-estimator.ts`
 ```ts
-// pose-estimator.ts — 影 dead-reckoning。指令+実dt で Pose を1tick進める(純)。
+// pose-estimator.ts — 推測航法(dead-reckoning)。指令+実dt で Pose を1tick進める(純)。
 // モデルベース: commandToDelta(校正) → integratePose(運動学カーネル)。ドリフトする=推定。
 import type { Pose, Command, MotionModel } from "../types";
 import { commandToDelta } from "./motion-model";
@@ -165,19 +172,19 @@ export function estimateStep(pose: Pose, cmd: Command, dtMs: number, m: MotionMo
 
 | 観点 | 確認 |
 |---|---|
-| **分岐網羅** | `commandToDelta` の `switch` 全 case（forward/left/right/stop）に対応テスト＝完全網羅。 |
+| **分岐網羅** | `commandToDelta` の `switch` 全 case（forward/reverse/left/right/stop）に対応テスト＝完全網羅。 |
 | **境界・関係** | dt 線形（2倍→2倍）／速度スケール（半分→半分）／stop=0。 |
 | **合成の正しさ** | `estimateStep` は**正方形経路（メタモルフィック）**で連続合成を検証＝個別caseで漏れる「回転と並進の順序バグ」を捕捉。 |
 | **不変条件** | 両関数の純粋性。 |
 | **カバレッジ** | `motion-model.ts` / `pose-estimator.ts` 行カバレッジ 100%（純）。 |
-| **ユニット不能・別手段** | 実機の `driveCmPerSec`/`turnDegPerSec` の**真値**はテスト不能 → §校正で実測。**ドリフト量は推定の性質上保証しない**（UI/ログで「推定」明示）。 |
+| **ユニット不能・別手段** | 実機の `forwardCmPerSec`/`turnDegPerSec` の**真値**はテスト不能 → §校正で実測。**ドリフト量は推定の性質上保証しない**（UI/ログで「推定」明示）。 |
 
 **結論**：推定ロジックは分岐網羅＋関係性＋合成＋純粋性で十分。残るのは「校正値の正しさ」だけで、それは実測（下記）で詰める。
 
 ---
 
 ## 5. 校正（実機・満充電で）
-- `driveCmPerSec`：`driveSpeed` PWM で一定距離を走らせ、巻尺＋ストップウォッチで cm/s を実測（目標 20〜30cm/s、[research-roomba-speed-and-motion](../reference/research-roomba-speed-and-motion.md)）。
+- `forwardCmPerSec`：`driveSpeed` PWM で一定距離を走らせ、巻尺＋ストップウォッチで cm/s を実測（目標 20〜30cm/s、[research-roomba-speed-and-motion](../reference/research-roomba-speed-and-motion.md)）。
 - `turnDegPerSec`：1回転にかかる時間から deg/s を実測（目標 60〜120°/s）。
 - `refDriveSpeed`/`refTurnSpeed`：実測した時の PWM をそのまま入れる。
 - **dt は名目 `tickMs` でなく実測経過**を使う（[7d](stage7d-recorder-and-ui.md) の recorder が `now()` 差分で供給）。WiFi は往復で tick が伸びるため。
