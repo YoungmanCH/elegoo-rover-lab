@@ -42,9 +42,17 @@ export const defaultConfig: Config = {
 export const defaultMotionModel: MotionModel = {
     forwardCmPerSec: 22,                    // driveSpeed の実速度。要実測。目標20〜30cm/s
     reverseCmPerSec: 22,                    // reverseSpeed の実速度。要実測(前進と同程度を仮置き)
-    turnDegPerSec: 90,                      // turnSpeed の実角速度。要実測。目標60〜120°/s
+    turnDegPerSec: 125,                      // turnSpeed の実角速度。要実測。目標60〜120°/s
     refDriveSpeed: defaultConfig.driveSpeed,
     refTurnSpeed: defaultConfig.turnSpeed,
+}
+
+export const sonarConfig = {
+    maxCm: 150,        // 超音波の測定上限(machine-ref §6.1: 150cm クランプ)
+    windowMs: 1500,    // 実測を残す時間(scan の左/中/右が並ぶ長さ)
+    rangeRingCm: 20,   // 距離リング間隔(実スケール)
+    maxRangeCm: 150,   // 描画外周(=maxCm)
+    fadeMs: 1500,      // ray を淡くする時間(=windowMs と揃える。drawSonar が使用)
 }
 
 /** 軌跡ログの調整。 */

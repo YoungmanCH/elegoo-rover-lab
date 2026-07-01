@@ -1,3 +1,4 @@
+import type { Estimated } from "./domain/estimated";
 // types.ts — 掃除ロジックの契約（型のみ。値・ロジックは持たない）
 //
 // この4つはロジックの「入口・出口・記憶・調整つまみ」に対応する:
@@ -61,7 +62,7 @@ export type Command = {
 
     /** 指定時、超音波の首(サーボZ)をこの角度[10..170, 10刻み]へ。省略時は動かさない。 */
     aimDeg?: number;
-}
+};
 
 /**
  * 掃除ロジックの内部状態（DRIVE/TURN の2相）。
@@ -82,7 +83,7 @@ export type State = {
 
     /** reverse 中の残り tick。 */
     reverseTicksLeft: number;
-}
+};
 
 /**
  * 調整つまみ（しきい値・速度・周期）。実体の値は config.ts に1か所だけ置く。
@@ -131,12 +132,12 @@ export type Config = {
 
     /** 180度旋回の tick 数(≒turnTicks×2)。 */
     turnTicks180: number;
-}
+};
 
 export type StepResult = {
     cmd: Command;
     next: State;
-}
+};
 
 /** PWM→物理量の校正（推定の根拠）。 */
 export type MotionModel = {
@@ -145,7 +146,7 @@ export type MotionModel = {
     turnDegPerSec: number;      // rotate(turnSpeed) の実角速度[deg/s]。
     refDriveSpeed: number;      // 上記 cm/s を測った前進/後退PWM(速度スケール基準)
     refTurnSpeed: number;       // 上記 deg/s を測った旋回PWM
-}
+};
 
 /** makeSample の入力：1tick分の生の観測（recorder が毎tick組み立てて渡す）。precision は別引数(config由来)。 */
 export type TickObservation = {
@@ -154,9 +155,9 @@ export type TickObservation = {
     cmd: Command;
     sensors: Sensors;
     phase: State["phase"];
-    pose: Pose;                 // sim=真値 / 実機=推定
+    pose: Estimated<Pose>;   // sim=真値/実機=推定(どちらもセンサー実測でない)
     estimated: boolean;         // true=推定(実機) / false=真値(sim)
-}
+};
 
 /** 1tick分の記録（軌跡ログの最小単位）。 */
 export type TickSample = {
@@ -167,9 +168,9 @@ export type TickSample = {
     distanceCm: number;
     lifted: boolean;
     phase: State["phase"];
-    pose: Pose;                 // sim=真値 / 実機=推定
+    pose: Estimated<Pose>;   // sim=真値/実機=推定(どちらもセンサー実測でない)
     estimated: boolean;         // true=推定(実機) / false=真値(sim)
-}
+};
 
 /** 軌跡ログのヘッダ（自己記述的：再現に要る文脈を入れる）。 */
 export type TrajectoryHeader = {
@@ -181,7 +182,7 @@ export type TrajectoryHeader = {
     motionModel: MotionModel;
     pose0: Pose;
     videoFile: string | null;   // カメラ録画(stage8)と紐付け。無ければ null
-}
+};
 
 /** カメラ録画/ライブ表示の設定（値は config.ts に集約）。 */
 export type RecordingConfig = {
@@ -189,4 +190,11 @@ export type RecordingConfig = {
     proxyStreamUrl: string;     // プロキシ経由（ex: http://localhost:8082/stream）
     controlUrl: string;         // 録画制御（ex: http://localhost:8082）
     useProxy: boolean;          // true=プロキシ経由（録画・CORS解決） / false=直URL
-}
+};
+
+/** 実測の距離サンプル(robot 相対)。位置に積分しない=ドリフトしない。 */
+export type SonarSample = {
+    relDeg: number;             // ロボット正面からの相対方向[度](0=正面・反時計回りが+)。首の「指令」方向
+    distanceCm: number;         // 超音波の「実測」距離[cm](>0)
+    t: number;                  // 実測時刻[ms]
+};

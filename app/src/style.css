@@ -13,6 +13,7 @@
 html, body { height: 100%; }
 body {
   margin: 0; color: var(--ink); overflow-x: hidden; letter-spacing: 0.02em;
+  min-height: 100dvh;                              /* ★モバイルのブラウザchrome考慮 */
   font: 14px/1.5 ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   background:
     radial-gradient(1200px 600px at 72% -10%, rgba(53, 224, 255, 0.10), transparent 60%),
@@ -37,13 +38,14 @@ body {
 .topbar, .layout { position: relative; z-index: 1; }
 .topbar {
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
-  padding: 16px 24px; border-bottom: 1px solid var(--line);
+  padding: clamp(10px, 2.5vw, 16px) clamp(14px, 3vw, 24px);   /* ★流体（旧 16px 24px） */
+  border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(53, 224, 255, 0.05), transparent);
 }
 .brand { display: flex; gap: 14px; align-items: center; }
 h1 {
-  margin: 0; font-size: 1.05rem; letter-spacing: 0.18em; text-transform: uppercase;
-  color: #eafaff; text-shadow: var(--glow);
+  margin: 0; font-size: clamp(0.92rem, 0.8rem + 0.6vw, 1.05rem);   /* ★流体（旧 1.05rem） */
+  letter-spacing: 0.18em; text-transform: uppercase; color: #eafaff; text-shadow: var(--glow);
 }
 .sub { margin: 3px 0 0; font-size: 0.66rem; letter-spacing: 0.3em; color: var(--muted); }
 .status {
@@ -54,6 +56,11 @@ h1 {
   width: 8px; height: 8px; border-radius: 50%; background: var(--cyan);
   box-shadow: 0 0 10px var(--cyan); animation: pulse 1.8s infinite;
 }
+/* 接続トーン：既定=sim(琥珀・非live) / live=緑。赤は停止専用なので状態には使わない。 */
+#link[data-tone="sim"]       { color: var(--gold); }
+#link[data-tone="sim"]  .dot { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+#link[data-tone="live"]      { color: #4be08a; }
+#link[data-tone="live"] .dot { background: #4be08a; box-shadow: 0 0 10px #4be08a; }
 /* アークリアクター風 */
 .reactor {
   width: 34px; height: 34px; border-radius: 50%; flex: none; position: relative;
@@ -62,16 +69,38 @@ h1 {
 .reactor::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; border: 1px solid rgba(53, 224, 255, 0.6); }
 .reactor::after  { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); }
 /* レイアウト */
-.layout { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; padding: 22px 24px 36px; }
-.stage { flex: 1 1 480px; min-width: 320px; display: flex; flex-direction: column; gap: 18px; }
+.layout {
+  display: flex; flex-wrap: wrap; align-items: flex-start;
+  gap: clamp(14px, 2.5vw, 22px);                              /* ★流体（旧 22px） */
+  padding: clamp(14px, 3vw, 22px) clamp(14px, 3vw, 24px) clamp(24px, 5vw, 36px);   /* ★流体（旧 22px 24px 36px） */
+}
+.stage { flex: 1 1 480px; min-width: 0; max-width: 760px; display: flex; flex-direction: column; gap: 18px; }   /* ★frame を canvas に合わせ幅制限（右の空白を無くす）／min-width:0（横溢れ防止） */
 /* 映像フレーム（ターゲティング枠＝コーナーブラケット。clip-path は付けない） */
 .feed { position: relative; margin: 0; padding: 14px; background: var(--panel); border: 1px solid var(--line); }
 .feed::before, .feed::after { content: ""; position: absolute; width: 18px; height: 18px; border: 2px solid var(--cyan); opacity: 0.85; }
 .feed::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
 .feed::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 .feed-label { margin: 0 0 8px; font-size: 0.66rem; letter-spacing: 0.28em; text-transform: uppercase; color: var(--cyan); }
-#sim { width: 100%; height: auto; max-width: 600px; display: block; background: #060a10; border: 1px solid var(--line); }
-#cam { width: 100%; max-width: 360px; min-height: 64px; display: block; background: #060a10; border: 1px solid var(--line); }
+/* 架空環境バッジ：ソナー画面の右上。琥珀=非live の意味（警告の赤ではない）。 */
+.feed-badge {
+  position: absolute; top: 10px; right: 12px; z-index: 2;
+  padding: 3px 8px; border-radius: 2px;
+  font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: #1a1206; background: var(--gold);
+}
+.feed-badge[hidden] { display: none; }
+/* canvas（長方形 4:3。frame 幅いっぱいに。※buffer も 640×480＝4:3 に：index.html） */
+#sim {
+  width: 100%; aspect-ratio: 4 / 3; height: auto; display: block;   /* ★正方形→長方形(4:3) */
+  max-height: min(72vh, 540px);                                     /* ★横向き端末で縦に暴れない */
+  background: #060a10; border: 1px solid var(--line);
+}
+/* カメラも frame 幅いっぱいに（大画面で小さいままにしない）。4:3 で SIM と揃える。 */
+#cam {
+  width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: contain; display: block;   /* ★max-width:360 撤去＝縮こまらない */
+  max-height: min(60vh, 540px);
+  background: #060a10; border: 1px solid var(--line);
+}
 /* コンソール */
 .console { flex: 0 0 300px; display: flex; flex-direction: column; gap: 16px; }
 .module {
@@ -121,7 +150,31 @@ h1 {
   0%, 100% { box-shadow: 0 0 24px rgba(255, 59, 48, 0.3), inset 0 0 22px rgba(255, 59, 48, 0.16); }
   50%      { box-shadow: 0 0 38px rgba(255, 59, 48, 0.6), inset 0 0 28px rgba(255, 59, 48, 0.3); }
 }
-@media (max-width: 760px) { .console { flex: 1 1 100%; } }
+
+/* ===== ★レスポンシブ（ブレークポイント） ===== */
+
+/* タブレット〜スマホ：1カラムに積み、操作(console)を map の上へ。
+   ※flex-direction は変えない。column にすると base の align-items:flex-start が“横方向”の制御になり、
+     各要素が全幅に伸びず内容幅で左寄せ＝崩れる。flex-wrap + flex-basis:100% で全幅の別行に積む。 */
+@media (max-width: 760px) {
+  .console { flex: 1 1 100%; }                 /* ★自然順＝map/CAM が上・操作(STOP含む)は下段（order 撤去） */
+  .stage { flex: 1 1 100%; max-width: none; }  /* map は全幅（PC用の上限を解除） */
+}
+
+/* 小型スマホ：余白と文字をさらに詰める */
+@media (max-width: 480px) {
+  .sub { display: none; }                          /* 副題を省きヘッダを軽く */
+  .btn { font-size: 0.78rem; letter-spacing: 0.1em; }
+  .feed { padding: 10px; }
+  .module { padding: 12px; }
+}
+
+/* 超ワイド：中央寄せで console が sonar から離れすぎないように */
+@media (min-width: 1400px) {
+  .layout { max-width: 1360px; margin-inline: auto; }
+}
+
+/* 動き配慮 */
 @media (prefers-reduced-motion: reduce) {
   .status .dot, .btn-stop { animation: none; }
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createTrajectory } from "./trajectory";
 import type { TrajectoryHeader, TickSample } from "../types";
+import { estimated } from "../domain/estimated";
 
 const header = { v: 1, sessionId: "s1" } as unknown as TrajectoryHeader;
 const sample = (t: number): TickSample => ({
@@ -11,7 +12,7 @@ const sample = (t: number): TickSample => ({
     distanceCm: 50,
     lifted: false,
     phase: "drive",
-    pose: { x: t, y: 0, yawDeg: 0 },
+    pose: estimated({ x: t, y: 0, yawDeg: 0 }),
     estimated: true,
 });
 
