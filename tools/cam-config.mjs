@@ -6,4 +6,6 @@ export const camConfig = {
     port: 8082,                                // プロキシのローカル待受
     outDir: "recordings",                      // 録画出力先
     boundary: "frame",                         // multipart 境界(固定)
+    reconnectBaseMs: 500,                      // 上流再接続の初回待ち
+    reconnectMaxMs: 8000,                      // 再接続待ちの上限
 };
