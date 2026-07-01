@@ -6,14 +6,17 @@ import {
     defaultMotionModel,
     telemetryConfig,
     recordingConfig,
+    sonarConfig
 } from "./config";
-import { defaultSimConfig, readSensors } from "./sim/model";
+import { defaultSimConfig } from "./sim/model";
 import type { World } from "./sim/model";
 import type { Transport } from "./io/transport";
-import type { State, Sensors, Command, TrajectoryHeader } from "./types";
+import type { State, Sensors, Command, TrajectoryHeader, SonarSample } from "./types";
 import { SimRobot } from "./sim/sim-robot";
 import { createRunner } from "./runner";
-import { draw } from "./ui/draw";
+import { nextServoDeg } from "./ui/geometry";
+import { drawSonar } from "./ui/sonar-view";
+import { linkStatusView } from "./ui/status";                                  // 接続状態→ヘッダ表示(純)
 import { SerialTransport } from "./io/transport";
 import { WebSocketTransport } from "./io/ws-transport";
 import { RobotSession } from "./session";                                      // 接続の所有・差し替え(旧を畳んでから新)を一手に持つ
@@ -22,6 +25,7 @@ import { SimPoseSource, EstimatorPoseSource } from "./telemetry/pose-source";  /
 import { downloadText } from "./telemetry/download";                           // 保存の副作用を注入
 import { cameraStreamUrl } from "./camera/stream-url";                         // 表示URL選択(proxy/direct)
 import { recStart, recStop } from "./camera/recorder-client";                  // 録画 start/stop を proxy へ
+import { toSonarSample, pruneSonar } from "./sensing/sonar";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#sim")!;
 const ctx = canvas.getContext("2d")!;
@@ -50,33 +54,33 @@ const recording = createRecordingSession({
     download: downloadText,
 });
 
+const forward = defaultSimConfig.servoForwardDeg;   // 正面角
+
+// 実機の首(指令)方向を持ち回す
+let realServoDeg = forward;
+let sonar: SonarSample[] = [];
+
+
 // 記録中なら onTick を積み、軌跡トレイル付きで描く。未記録なら従来どおり描くだけ。
 // truth: シムは真値 world を渡す／実機は無いので、記録した推定 pose から world を組んで描く。
-function render(state: State, sensors: Sensors, cmd: Command, truth?: World): void {
-    const trail = recording.tick(state, sensors, cmd);
-    if (trail) {
-        const world = truth ?? { 
-            pose: trail[trail.length - 1], 
-            servoDeg: defaultConfig.scanCenterDeg 
-        };
-        draw(ctx, world, defaultSimConfig, trail, sensors.distanceCm);
-    } else if (truth) {
-        draw(ctx, truth, defaultSimConfig, undefined, sensors.distanceCm);
-    }
+function render(state: State, sensors: Sensors, cmd: Command): void {
+    recording.tick(state, sensors, cmd);
+    realServoDeg = nextServoDeg(realServoDeg, cmd.aimDeg);
+    const now = Date.now();
+    const s = toSonarSample(
+        realServoDeg, 
+        forward, 
+        sensors.distanceCm, 
+        now, 
+        sonarConfig.maxCm
+    );
+    if (s) sonar.push(s);
+    sonar = pruneSonar(sonar, now, sonarConfig.windowMs);
+    drawSonar(ctx, sonar, sensors, cmd, realServoDeg, forward, sonarConfig);
 }
 
-// 初期状態を1回描く（まだ sensors が無いので readSensors で距離を補う）
-const w0 = simRobot.getWorld();
-draw(
-    ctx, 
-    simRobot.getWorld(), 
-    defaultSimConfig, 
-    undefined, 
-    readSensors(w0, defaultSimConfig).distanceCm
-);
-
 const simRunner = createRunner(simRobot, defaultConfig, initialState, (state, sensors, cmd) => {
-    render(state, sensors, cmd, simRobot.getWorld());   // sim=真値 world ＋(記録中なら)トレイル
+    render(state, sensors, cmd);   // sim=真値 world ＋(記録中なら)トレイル
 });
 
 // --- 実機(自走)。接続できたらここに入る ---
@@ -95,9 +99,21 @@ async function emergencyStop(): Promise<void> {
     console.log("■ 停止");
 }
 
+// 接続状態バッジ(ヘッダ)と架空(SIM)バッジ。状態を偽らない(stage13f)。
+const linkEl = document.querySelector<HTMLElement>("#link")!;
+const linkText = document.querySelector<HTMLElement>("#link-text")!;
+const simBadge = document.querySelector<HTMLElement>("#sim-badge")!;
+function setLink(source: TrajectoryHeader["source"]): void {
+    const v = linkStatusView(source);           // 純関数(テスト済)
+    linkText.textContent = v.label;
+    linkEl.dataset.tone = v.tone;               // CSS が data-tone で色分け(sim=琥珀/live=緑)
+}
+setLink("sim");                                 // 初期＝未接続(架空)
+
 // 開始: 実機接続済みなら実機を、未接続ならシムを走らせる
 document.querySelector("#start")!.addEventListener("click", () => {
     const isReal = !!session.runner;
+    simBadge.hidden = isReal;                   // 未接続(sim)で開始→「架空環境」バッジを出す
     const pose0 = simRobot.getWorld().pose;
     recording.start({
         poseSource: isReal 
@@ -149,10 +165,12 @@ async function connect(openTransport: () => Promise<Transport>, okMsg: string, s
         ));
         await session.robot?.send({ kind: "stop", speed: 0, aimDeg: defaultConfig.scanCenterDeg });
         connSource = source;                            // ヘッダ source 用に接続種別を保持
+        setLink(source);                                // ★ヘッダを live 表示(USB/WiFi)に
         console.log(okMsg);
         return true;
     } catch (e) {
         console.warn("接続失敗:", (e as Error).message);   // 失敗=未接続(安全側)。シムは使える
+        setLink("sim");                                 // ★失敗＝未接続(架空)のまま
         return false;
     } finally {
         connectBtn.disabled = wifiBtn.disabled = false;   // 失敗でも再挑戦できるよう必ず戻す

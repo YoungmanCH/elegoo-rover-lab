@@ -4,7 +4,7 @@ import { advance, readSensors, defaultSimConfig } from "./model";
 import type  { World } from "./model";
 import type { Command } from "../types";
 
-const sc = defaultSimConfig; // 200×150, maxDrive=4, maxTurn=8
+const sc = defaultSimConfig; // 200×150。移動量/回転量は sc.maxDrive/maxTurn 由来で導出（調整に追従＝直書きしない）
 const defaultServoDeg = 90;
 
 function world(x: number, y: number, yawDeg: number, servoDeg=defaultServoDeg): World {
@@ -16,13 +16,13 @@ const rev = (speed: number): Command => ({ kind: "reverse", speed });
 describe("advance", () => {
     it("forward(yaw=0) → +x 方向へ maxDriveCmPerTick ぶん進む(speed=255)", () => {
         const w = advance(world(10, 75, 0), fwd(255), sc);
-        expect(w.pose.x).toBeCloseTo(14);       // 10 + 4
+        expect(w.pose.x).toBeCloseTo(10 + sc.maxDriveCmPerTick);   // speed255 で maxDrive ぶん
         expect(w.pose.y).toBeCloseTo(75);       // 変化なし
     });
 
     it("forward は speed に比例(speed=128 ≒ 半分)", () => {
         const w = advance(world(10, 75, 0), fwd(128), sc);
-        expect(w.pose.x).toBeCloseTo(10 + (128 / 255) * 4);
+        expect(w.pose.x).toBeCloseTo(10 + (128 / 255) * sc.maxDriveCmPerTick);
     });
 
     it("forward は壁を越えない(右端でクランプ)", () => {
@@ -32,12 +32,12 @@ describe("advance", () => {
 
     it("reverse(yaw=0) → -x 方向へ進む", () => {
         const w = advance(world(50, 75, 0), rev(255), sc);
-        expect(w.pose.x).toBeCloseTo(46);       // 50 - 4
+        expect(w.pose.x).toBeCloseTo(50 - sc.maxDriveCmPerTick);   // 後退も同量
     });
 
     it("reverse は speed に比例", () => {
         const w = advance(world(50, 75, 0), rev(128), sc);
-        expect(w.pose.x).toBeCloseTo(50 - (128 / 255) * 4);
+        expect(w.pose.x).toBeCloseTo(50 - (128 / 255) * sc.maxDriveCmPerTick);
     });
 
     it("reverse は壁を越えない(左端でクランプ)", () => {
@@ -65,8 +65,8 @@ describe("advance", () => {
     it("rotateLeft は yaw を増やす / rotateRight は減らす", () => {
         const l = advance(world(10, 10, 0), { kind: "rotateLeft", speed: 255}, sc);
         const r = advance(world(10, 10, 0), { kind: "rotateRight", speed: 255 }, sc);
-        expect(l.pose.yawDeg).toBeCloseTo(8);   // +maxTurn
-        expect(r.pose.yawDeg).toBeCloseTo(-8);  // -maxTurn
+        expect(l.pose.yawDeg).toBeCloseTo(sc.maxTurnDegPerTick);    // +maxTurn
+        expect(r.pose.yawDeg).toBeCloseTo(-sc.maxTurnDegPerTick);   // -maxTurn
     });
 
     it("stop は姿勢を変えない", () => {
@@ -110,5 +110,5 @@ describe("readSensors", () => {
     it("yaw と lifted をそのまま反映", () => {
         const s = readSensors(world(10, 75, 45), sc);
         expect(s.lifted).toBe(false);
-    })
+    });
 });

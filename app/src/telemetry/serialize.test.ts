@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { toNDJSON, toCSV } from "./serialize";
 import { createTrajectory } from "./trajectory";
 import type { TrajectoryHeader, TickSample } from "../types";
+import { estimated } from "../domain/estimated";
 
 const header = { v: 1, sessionId: "s1" } as unknown as TrajectoryHeader;
 const sample = (t: number): TickSample => ({
@@ -12,7 +13,7 @@ const sample = (t: number): TickSample => ({
     distanceCm: 50,
     lifted: false,
     phase: "drive",
-    pose: { x: t, y: 0, yawDeg: 0},
+    pose: estimated({ x: t, y: 0, yawDeg: 0 }),
     estimated: true,
 });
 
@@ -30,10 +31,10 @@ describe("toNDJSON", () => {
         expect(JSON.parse(lines[1]).type).toBe("tick");
     });
 
-    it("往復(round-trip): tick 行を parse すると元サンプルに戻る", () => {
-        const tr = withSamples(1);
-        const back = JSON.parse(toNDJSON(tr).trim().split("\n")[1]);
-        expect(back).toMatchObject({ type: "tick", ...tr.samples()[0] });   // 取りこぼし無し
+    it("往復: tick 行に実測列＋est_接頭の推定列(生 pose は出ない)", () => {
+        const back = JSON.parse(toNDJSON(withSamples(1)).trim().split("\n")[1]);
+        expect(back).toMatchObject({ type: "tick", t: 0, cmdKind: "forward", distanceCm: 50, est_x: 0, est_y: 0, est_yaw: 0, estimated: true });
+        expect(back.pose).toBeUndefined();
     });
 
     it("空 Trajectory → ヘッダ1行だけ", () => {
@@ -44,7 +45,7 @@ describe("toNDJSON", () => {
 describe("toCSV", () => {
     it("ヘッダ行が列定義と一致", () => {
         expect(toCSV(withSamples(1)).trim().split("\n")[0])
-            .toBe("t,dt,cmdKind,speed,distanceCm,lifted,phase,x,y,yawDeg,estimated");
+            .toBe("t,dt,cmdKind,speed,distanceCm,lifted,phase,est_x,est_y,est_yaw,estimated");
     });
 
     it("各行のセル数 = ヘッダ列数(列ズレ防止の不変条件)", () => {

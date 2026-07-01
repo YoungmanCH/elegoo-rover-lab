@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { createRecordingSession } from "./recording-session";
 import type { PoseSource } from "./pose-source";
+import { estimated, takeEstimate, type Estimated } from "../domain/estimated";
 import type { Pose, State, Sensors, Command, Config, MotionModel } from "../types";
 
 // 注入する fake 群（DOM も時計も実 Date も使わない＝決定論的）
 class FakePoseSource implements PoseSource {
     private i = 0;
     constructor(private poses: Pose[]) {}
-    next(): Pose { return this.poses[this.i++]; }
+    next(): Estimated<Pose> { return estimated(this.poses[this.i++]); }
 }
 const clock = (ts: number[]) => { let i = 0; return () => ts[i++]; };       // 時刻を台本で渡す
 
@@ -55,7 +56,7 @@ describe("createRecordingSession", () => {
         const { rec, start } = setup([1000, 1100], [{ x: 1, y: 0, yawDeg: 0 }]);
         start();
         expect(rec.active).toBe(true);
-        expect(rec.tick(state, sensors, fwd)).toEqual([{ x: 1, y: 0, yawDeg: 0 }]);
+        expect(rec.tick(state, sensors, fwd)?.map(takeEstimate)).toEqual([{ x: 1, y: 0, yawDeg: 0 }]);
     });
 
     it("複数 tick で軌跡が累積する", () => {
@@ -67,7 +68,7 @@ describe("createRecordingSession", () => {
         rec.tick(state, sensors, fwd);
         const trail = rec.tick(state, sensors, fwd);
         expect(trail).toHaveLength(2);
-        expect(trail![1]).toEqual({ x: 2, y: 0, yawDeg: 0 });
+        expect(takeEstimate(trail![1])).toEqual({ x: 2, y: 0, yawDeg: 0 });
     });
 
     it("saveNDJSON: 注入 download に (ファイル名, NDJSON, mime) を渡す・往復可能", () => {

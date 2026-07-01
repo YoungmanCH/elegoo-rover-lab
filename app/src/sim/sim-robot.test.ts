@@ -21,7 +21,7 @@ describe("SimRobot", () => {
         const robot = new SimRobot(world(10, 75, 0), sc);
         await robot.send({ kind: "forward", speed: 255});
         const s = await robot.read();
-        expect(s.distanceCm).toBeCloseTo(186);  // x:14 → 200-14
+        expect(s.distanceCm).toBeCloseTo(200 - (10 + sc.maxDriveCmPerTick));  // 前進後の x から前方壁まで
     });
 
     it("send(stop) は世界を変えない", async () => {

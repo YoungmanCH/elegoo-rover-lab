@@ -1,3 +1,50 @@
+# 段階10b：操作UIをレスポンシブに — 安全（STOP到達性）を全幅で維持（CSS・smoke）
+
+> **ゴール**：`index.html`＋`style.css` を**スマホ〜4Kまで崩れない**レスポンシブにする。ただし [stage10](stage10-ui-layout-and-safety.md) の最優先原則「**停止が最も目立ち、常に最短で押せる**」を**どの画面幅でも守る**。
+> **なぜ（安全の穴）**：現状は狭幅で `.stage`（map）が上・`.console`（操作）が下へ回り込む＝**緊急停止が“下スクロール”しないと押せない**。ロボット操作盤では致命的。レスポンシブ化＝この穴を塞ぐこと。
+> **設計の肝**：(1) **モバイルでは操作(`.console`)を最上部へ並べ替え**（`order:-1`）＝STOP が画面先頭で**スクロール不要で即押せる**。STOP は**通常フローのまま**（fixed/sticky にしない）＝他ボタンと**原理的に重ならない**。(2) 余白/文字は **`clamp()` で流体**化して段差を減らす。(3) `.stage` の `min-width` 起因の**横溢れを修正**。**HTML は無改造**＝CSS のみ。
+> **前提**：[stage10](stage10-ui-layout-and-safety.md)（HUD・安全UX・保持すべきID）／[stage13](stage13-measured-only-sensor-view.md)（**現行の canvas は 480×480 正方形**の robot-centric sonar。`index.html` の `<canvas 480×480>` と `#sim { aspect-ratio:1/1; max-width:480px }` は stage13 が確定済み＝**これを前提にレスポンシブ化**する）。ロジック・`ui/`・`main` は無改造。
+> **注意（既存の HTML/CSS を壊さない）**：stage13 が `#sim` を「正方形・robot 中心 sonar」に変更済み（旧 stage11 の 4:3 タクティカルマップ `draw.ts` は撤去）。本stageは **`#sim` の `width`/`aspect-ratio`/`max-width` を据え置き**、`max-height` 等を**足すだけ**。sonar 描画（`ui/sonar-view`）・保持IDには触れない。
+> **テストの性質**：CSS/レイアウトは**ユニット不能＝目視 smoke**（複数幅で確認）。
+> **このstageの位置**：[stage10](stage10-ui-layout-and-safety.md)（レイアウト/安全）の続き。
+> **編集はあなた**。括弧は半角。
+
+---
+
+## 0. この回の増分
+
+| # | 増分 | ファイル | テスト |
+|---|---|---|---|
+| 1 | 流体スペーシング／横溢れ修正／landscape 対策 | `app/src/style.css` | smoke |
+| 2 | ブレークポイント（≤760 / ≤480 / ≥1400）＋**モバイルで操作を上へ並べ替え（STOP 先頭）** | `app/src/style.css` | smoke（目視・全幅で STOP 到達・重なり無し） |
+
+> **HTML 変更は1箇所のみ**：`<canvas>` の buffer を `480×480`→**`640×480`（4:3）**に（下記②。歪み防止のため CSS の `aspect-ratio` と揃える）。ロジック・描画は無改造。
+
+> **改訂（実機フィードバック反映）**：① sim window を**正方形→長方形(4:3)**にして frame をぴったり埋める（`.stage max-width:760`＋`#sim aspect-ratio:4/3`＋canvas buffer 640×480）。② 狭幅は**自然順＝map が上・操作(STOP含む)は下段**へ（`order:-1` 撤去）。※以前の「console を最上部へ」「canvas は正方形」方針はこの2点で置換。以下の §1/§2/§3 の該当記述はこの改訂後の内容。STOP はそれでも `Esc/Space` 常時可＋map が 4:3 で高さ制限され下段でも近い。
+
+---
+
+## 1. 設計方針
+
+| 原則 | 具体策 |
+|---|---|
+| **安全＝STOP到達性を全幅で維持（最優先）** | 狭幅では **`.console` を最上部へ並べ替え**（`order:-1`）＝STOP が画面先頭・**スクロール不要で即押せる**。STOP は通常フローのまま（fixed/sticky にしない）＝**他ボタンと絶対に重ならない**。map(sonar) は `max-height` で高さ制限済みなので下でも可。 |
+| **流体スペーシング** | `.layout`/`.topbar` の padding・gap を **`clamp()`** に。ブレークポイントの段差を減らし、320〜1440px を滑らかに。 |
+| **横溢れ修正** | `.stage { min-width: 320px → 0 }`。320px 幅の端末で `min-width:320px`＋padding が**横スクロールを生む**穴を根本修正（`overflow-x:hidden` の“隠す”に頼らない）。 |
+| **canvas の縦暴走を抑える** | 既存 `#sim`（stage13 の正方形 sonar）に `max-height` を**1行足すだけ**。横向きスマホで正方形ビューが**ビューポート高を超える**のを防ぐ（`aspect-ratio:1/1`・`max-width` は据え置き）。 |
+| **ブレークポイント（最小限）** | base（2カラム）／`≤760`（1カラム・console を上へ）／`≤480`（余白・文字を詰める・副題省略）／`≥1400`（超ワイドは中央寄せ）。 |
+| **タップ領域** | 既存 min-height 48px（停止は特大）を維持＝指で外しにくい。 |
+| **美学・A11y・動き配慮を維持** | HUD 配色・グロー・`:focus-visible`・`prefers-reduced-motion` は据え置き。装飾は `pointer-events:none`／`aria-hidden` のまま。 |
+
+> **なぜ「固定STOP」をやめたか（実装で判明）**：STOP を `position:fixed`（画面下部固定）にすると、`html,body{height:100%}` と相まって `body{padding-bottom}` の**余白予約が効かず、STOP が他ボタン（特に保存）に重なる**不具合が出た。加えて固定バーは本質的に「スクロール中の要素が裏を通る」＝重なって見える。よって **STOP を通常フローに戻し、`.console` を最上部へ並べ替える**方式に変更。STOP が画面先頭で即押せ、**重なりが原理的に起きない**。map(sonar) は `max-height:min(72vh,480px)` で高さ制限済みなので、下に置いても STOP は近い。
+
+---
+
+## 2. `app/src/style.css`（全文）
+
+現状の `style.css` にレスポンシブ変更を統合した**完全版**。`★` が今回の変更点（`min-height:100dvh`／`clamp()` 流体化／`.stage min-width:0`／`#sim max-height`／末尾のブレークポイント3つ）。他は既存のまま。
+
+```css
 :root {
   --bg: #05080d;
   --panel: rgba(12, 20, 30, 0.55);
@@ -56,11 +103,6 @@ h1 {
   width: 8px; height: 8px; border-radius: 50%; background: var(--cyan);
   box-shadow: 0 0 10px var(--cyan); animation: pulse 1.8s infinite;
 }
-/* 接続トーン：既定=sim(琥珀・非live) / live=緑。赤は停止専用なので状態には使わない。 */
-#link[data-tone="sim"]       { color: var(--gold); }
-#link[data-tone="sim"]  .dot { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
-#link[data-tone="live"]      { color: #4be08a; }
-#link[data-tone="live"] .dot { background: #4be08a; box-shadow: 0 0 10px #4be08a; }
 /* アークリアクター風 */
 .reactor {
   width: 34px; height: 34px; border-radius: 50%; flex: none; position: relative;
@@ -81,14 +123,6 @@ h1 {
 .feed::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
 .feed::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
 .feed-label { margin: 0 0 8px; font-size: 0.66rem; letter-spacing: 0.28em; text-transform: uppercase; color: var(--cyan); }
-/* 架空環境バッジ：ソナー画面の右上。琥珀=非live の意味（警告の赤ではない）。 */
-.feed-badge {
-  position: absolute; top: 10px; right: 12px; z-index: 2;
-  padding: 3px 8px; border-radius: 2px;
-  font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase;
-  color: #1a1206; background: var(--gold);
-}
-.feed-badge[hidden] { display: none; }
 /* canvas（長方形 4:3。frame 幅いっぱいに。※buffer も 640×480＝4:3 に：index.html） */
 #sim {
   width: 100%; aspect-ratio: 4 / 3; height: auto; display: block;   /* ★正方形→長方形(4:3) */
@@ -178,3 +212,28 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .status .dot, .btn-stop { animation: none; }
 }
+```
+
+> **注（固定STOPをやめた理由）**：当初 `.btn-stop { position:fixed; bottom }` ＋ `body{padding-bottom}` にしたが、`html,body{height:100%}` で**余白予約が効かず STOP が保存ボタン等に重なった**。通常フローのまま **`.console { order:-1 }` で操作を上へ**寄せる方式に変更＝STOP が先頭で即押せ、**重なりが起きない**。`.btn-stop` は base の見た目（92px・赤・脈動）のまま。**保持IDは stage10 のまま**（`#sim`/`#stop`/… を改名・削除しない）。
+
+> **任意（ノッチ端末の見切れ対策）**：`index.html` の viewport に1語だけ追加してもよい。`index.html` の他は無改造。
+> ```html
+> <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+> ```
+
+---
+
+## 3. テストは足りるか／DoD（smoke・目視）
+
+CSS はユニット不能。**代表4幅＋向き**で目視確認する。
+
+- [ ] **360px（小型スマホ）**：横スクロールが出ない／**STOP が画面先頭**（操作が map の上）で押せる／**STOP が他ボタンに重ならない**／文字が溢れない。
+- [ ] **768px（タブレット/縦）**：1カラム・操作が上・map と操作が破綻しない・重なり無し。
+- [ ] **1024px（ノートPC）**：2カラム（sonar 左・console 右）で従来どおり。
+- [ ] **1440px+（大画面）**：中央寄せで console が sonar から離れすぎない。
+- [ ] **横向きスマホ（例 740×360）**：正方形ビューが縦に溢れず（`max-height`）、STOP が先頭で押せる。
+- [ ] **不変**：HUD 配色・グロー・**sonar 描画（ray/ring/readout・stage13）**は従来どおり（CSS は canvas 内描画に触れない）。`prefers-reduced-motion` で脈動が止まる。
+- [ ] **安全**：どの幅でも「開始→停止が最短で押せる」。**狭幅では STOP が先頭＝下スクロール不要**／**固定要素が他ボタンに被らない**。
+
+---
+関連：[stage10](stage10-ui-layout-and-safety.md)（HUD・安全UX・保持すべきID）／ [stage11](stage11-sim-tactical-map.md)（canvas の `aspect-ratio`）／ [code-design.md](code-design.md)（§7 副作用は smoke）

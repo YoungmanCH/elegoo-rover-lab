@@ -1,61 +1,67 @@
 import { describe, it, expect } from "vitest";
-import {
-  aimAngleDeg,
-  polarPointCm,
-  scaleFor,
-  toPx,
-  normalizeYaw,
-} from "./geometry";
-import { defaultSimConfig } from "../sim/model";
+import { sonarLayout, sonarPointPx, fadeAlpha, nextServoDeg } from "./geometry";
 
-describe("aimAngleDeg（センサ実測方向＝readSensors と同規約）", () => {
-  it("首が正面(servo=forward)なら yaw のまま", () => {
-    expect(aimAngleDeg(0, 90, 90)).toBe(0);
-    expect(aimAngleDeg(30, 90, 90)).toBe(30);
-  });
-  it("servo 150(+60)=左へ+60 / 30(-60)=右へ-60 オフセット", () => {
-    expect(aimAngleDeg(0, 150, 90)).toBe(60);
-    expect(aimAngleDeg(0, 30, 90)).toBe(-60);
-  });
+describe("nextServoDeg（実機コーンが指令方向へ追従）", () => {
+    it("aimDeg 指定時はそれに追従", () => {
+        expect(nextServoDeg(90, 150)).toBe(150);
+        expect(nextServoDeg(150, 30)).toBe(30);
+    });
+
+    it("aimDeg 未指定(undefined)は前回を保持", () => {
+        expect(nextServoDeg(150, undefined)).toBe(150);
+    });
 });
 
-describe("polarPointCm（極座標→world cm。0度=+x, 90度=+y, 反時計+）", () => {
-  it("0度へ d → +x", () => {
-    expect(polarPointCm(0, 0, 0, 50)).toEqual({ x: 50, y: 0 });
-  });
-
-  it("90度へ → +y", () => {
-    const p = polarPointCm(0, 0, 90, 50);
-    expect(p.x).toBeCloseTo(0);
-    expect(p.y).toBeCloseTo(50);
-  });
-  it("60度・50cm → (25, 43.3)", () => {
-    const p = polarPointCm(0, 0, 60, 50);
-    expect(p.x).toBeCloseTo(25);
-    expect(p.y).toBeCloseTo(43.3, 1);
-  });
-  it("起点オフセットを足す", () => {
-    expect(polarPointCm(10, 5, 0, 20)).toEqual({ x: 30, y: 5 });
-  });
+describe("sonarLayout（canvas→中心/スケール）", () => {
+    it("中心=canvas/2・scale=(min半径-余白)/maxRange", () => {
+        expect(sonarLayout(500, 500, 150, 8)).toEqual({ 
+            cx: 250, 
+            cy: 250, 
+            scale: (250 -16) / 150 
+        });
+        expect(sonarLayout(600, 400, 100, 0)).toEqual({ 
+            cx: 300, 
+            cy: 200, 
+            scale: 200 / 100
+        });   // 縦(400/2=200)が制約 → 半径200 / maxRange100 = 2
+    });
 });
 
-describe("scaleFor / toPx（cm↔px 投影）", () => {
-  it("scaleFor: 部屋を canvas に収める最小倍率", () => {
-    expect(scaleFor(600, 450, defaultSimConfig)).toBe(3); // min(600/200,450/150)
-    expect(scaleFor(400, 450, defaultSimConfig)).toBe(2); // 幅側が制約
-  });
+describe("sonarPointPx（0=上・+左=反時計。符号バグ検出）", () => {
+    const at = (relDeg: number) => sonarPointPx(relDeg, 50, 100, 100, 1);
+    it("relDeg=0 → 真上", () => { 
+        const p = at(0);
+        expect(p.px).toBeCloseTo(100);
+        expect(p.py).toBeCloseTo(50);
+    });
 
-  it("toPx: cm→px・y 反転(奥=上)", () => {
-    expect(toPx(10, 75, defaultSimConfig, 3)).toEqual({ px: 30, py: 225 }); // (150-75)*3
-    expect(toPx(0, 150, defaultSimConfig, 3)).toEqual({ px: 0, py: 0 }); // 奥端=上端
-  });
+    it("relDeg=+90(左) → 真左", () => {
+        const p = at(90);
+        expect(p.px).toBeCloseTo(50);
+        expect(p.py).toBeCloseTo(100);
+    });
+
+    it("relDeg=-90(右) → 真右", () => {
+        const p = at(-90);
+        expect(p.px).toBeCloseTo(150);
+        expect(p.py).toBeCloseTo(100);
+    });
 });
 
-describe("normalizeYaw（0..359 表示用）", () => {
-  it("負・360超を畳む", () => {
-    expect(normalizeYaw(0)).toBe(0);
-    expect(normalizeYaw(-90)).toBe(270);
-    expect(normalizeYaw(450)).toBe(90);
-    expect(normalizeYaw(359.6)).toBe(0); // round(359.6)=360 → 0
-  });
+describe("fadeAlpha（古さ→不透明度・新しいほど濃い", () => {
+    it("最新は最も濃い(min+span)", () => {
+        expect(fadeAlpha(1000, 1000, 1500, 0.15, 0.85)).toBeCloseTo(1.0);
+    });
+    
+    it("fadeMs 経過で最も薄い(min)", () => {
+        expect(fadeAlpha(2500, 1000, 1500, 0.15, 0.85)).toBeCloseTo(0.15);
+    });
+
+    it("半分経過は中間", () => {
+        expect(fadeAlpha(1750, 1000, 1500, 0.15, 0.85)).toBeCloseTo(0.575);     // 0.15+0.85*0.5
+    });
+    
+    it("未来/超過はクランプ", () => {
+        expect(fadeAlpha(500, 1000, 1500, 0.15, 0.85)).toBeCloseTo(1.0);
+    });
 });
