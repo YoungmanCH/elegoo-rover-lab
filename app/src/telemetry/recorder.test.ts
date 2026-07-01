@@ -3,12 +3,13 @@ import { TrajectoryRecorder } from "./recorder";
 import { createTrajectory } from "./trajectory";
 import type { PoseSource } from "./pose-source";
 import type { Pose, Command, Sensors, State, TrajectoryHeader } from "../types";
+import { estimated, takeEstimate, type Estimated } from "../domain/estimated";
 
 class FakePoseSource implements PoseSource {
     calls: { cmd: Command; dtMs: number}[] = [];
     constructor(private poses: Pose[]) {}
-    next(cmd: Command, dtMs: number): Pose { 
-        this.calls.push({ cmd, dtMs }); return this.poses[this.calls.length - 1]; 
+    next(cmd: Command, dtMs: number): Estimated<Pose> { 
+        this.calls.push({ cmd, dtMs }); return estimated(this.poses[this.calls.length - 1]); 
     }
 }
 const clock = (ts: number[]) => { let i = 0; return () => ts[i++]; };   // 時刻を台本で渡す
@@ -55,7 +56,7 @@ describe("TrajectoryRecoder", () => {
         rec.onTick(state, sensors, fwd);
         expect(ps.calls[1].dtMs).toBe(120);
         expect(traj.samples()[1].t).toBe(120);
-        expect(traj.samples()[1].pose).toEqual({ x: 2, y: 0, yawDeg: 0 });
+        expect(takeEstimate(traj.samples()[1].pose)).toEqual({ x: 2, y: 0, yawDeg: 0 });
     });
 
     it("finish() で記録した Trajectory を返す", () => {

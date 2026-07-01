@@ -3,10 +3,9 @@
 // World            … 仮想世界の状態(ロボットの姿勢)。部屋は SimConfig の矩形で表す。
 // advance()        … 1ティック分、指令に従って姿勢を進める。
 // readSensors()    … 現在の姿勢から Sensors(前方距離/yaw/離地)を作る。
-import type { Sensors, Command, Pose } from "../types";
+import type { Sensors, Command, Pose, MotionModel } from "../types";
 import { integratePose } from "../domain/kinematics";
-
-
+import { defaultConfig, defaultMotionModel } from "../config";
 
 /** 仮想世界の状態。姿勢＋首の向き(90=正面)。 */
 export type World = { pose: Pose; servoDeg: number }; 
@@ -29,13 +28,25 @@ export type SimConfig = {
     servoForwardDeg: number;
 }
 
-/** 既定のシム設定(200×150cm の部屋)。 */
+/** 既定のsim設定(200×150cm の部屋)。 */
 export const defaultSimConfig: SimConfig = {
     roomW: 200,
     roomH: 150,
-    maxDriveCmPerTick: 4,
-    maxTurnDegPerTick: 8,
     servoForwardDeg: 90,
+    ...simMotionFromModel(defaultMotionModel, defaultConfig.tickMs),
+}
+
+/** sim の per-tick 運動(speed255 基準)を「実測 config(MotionModel)」から導出する(純)。
+ *  ＝maxDrive/maxTurn を sim に直書きせず、実測 cm/s・deg/s の単一情報源から計算する。 */
+export function simMotionFromModel(m: MotionModel, tickMs: number): {
+    maxDriveCmPerTick: number;
+    maxTurnDegPerTick: number
+} {
+    const sec = tickMs / 1000;
+    return {
+        maxDriveCmPerTick: m.forwardCmPerSec * sec * (255 / m.refDriveSpeed),
+        maxTurnDegPerTick: m.turnDegPerSec * sec * (255 / m.refTurnSpeed),
+    };
 }
 
 /** 値を [min, max] に収める小ヘルパ。 

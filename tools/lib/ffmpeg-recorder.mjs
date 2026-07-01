@@ -7,14 +7,14 @@ import { videoFilename, sidecar } from "./recording-paths.mjs";
  * @property {{ write(b: Uint8Array): void, end(): void } | null} stdin
  */
 /**
- * @typedef {object} RecControllerDeps
- * @property {(cmd: string, args: string[]) => RecProc} spawn  ffmpeg を起動(注入＝テストで fake)。
- * @property {(path: string, data: string) => void} writeFile  サイドカー書き出し(注入)。
- * @property {() => string} nowIso  ISO時刻(注入＝Date を内部で呼ばない)。
- * @property {string} outDir  出力ディレクトリ。
+ * @typedef {object} RecDeps
+ * @property {(dir: string) => void} ensureDir  出力dirを保証(書き込み前)。★これが無くて ENOENT だった
+ * @property {(cmd: string, args: string[]) => RecProc} spawn
+ * @property {(path: string, data: string) => void} writeFile
+ * @property {() => string} nowIso
+ * @property {string} outDir
  */
-
-/** @param {RecControllerDeps} deps */
+/** @param {RecDeps} deps */
 export function createFfmpegRecorder(deps) {
     /** @type {RecProc | null} */
     let proc = null;
@@ -28,6 +28,7 @@ export function createFfmpegRecorder(deps) {
          */
         start(sessionId, upstream) {
             if (proc) return false;                                 // 二重起動を弾く
+            deps.ensureDir(deps.outDir);                            // ENOENT回避
             deps.writeFile(
                 `${deps.outDir}/${sessionId}.json`,
                 JSON.stringify(sidecar(sessionId, deps.nowIso(), upstream)),

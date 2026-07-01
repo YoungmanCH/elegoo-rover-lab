@@ -19,7 +19,9 @@
           <p class="sub">CLEANING UNIT // CONTROL CONSOLE</p>
         </div>
       </div>
-      <div class="status"><span class="dot" aria-hidden="true"></span> SYSTEM ONLINE</div>
+      <div class="status" id="link" data-tone="sim">
+        <span class="dot" aria-hidden="true"></span> <span id="link-text">SIM · 架空環境</span>
+      </div>
     </header>
 
     <main class="layout">
@@ -27,7 +29,8 @@
       <section class="stage">
         <figure class="feed">
           <figcaption class="feed-label">SIM FEED // MAP</figcaption>
-          <canvas id="sim" width="600" height="450"></canvas>
+          <span class="feed-badge" id="sim-badge" hidden>SIM · 架空環境（実測ではない）</span>
+          <canvas id="sim" width="640" height="480"></canvas>
         </figure>
         <figure class="feed">
           <figcaption class="feed-label">CAM FEED // WiFi</figcaption>

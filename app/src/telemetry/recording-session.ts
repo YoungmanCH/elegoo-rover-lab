@@ -9,6 +9,7 @@ import type {
     MotionModel, 
     TrajectoryHeader 
 } from "../types";
+import type { Estimated } from "../domain/estimated";
 import type { PoseSource } from "./pose-source";
 import type { Trajectory } from "./trajectory";
 import { createTrajectory } from "./trajectory";
@@ -79,7 +80,7 @@ export function createRecordingSession(d: RecordingDeps) {
         },
 
         /** 1tick 記録し、描画用の軌跡(pose列)を返す。未開始なら null(=描かない)。 */
-        tick(state: State, sensors: Sensors, cmd: Command): Pose[] | null {
+        tick(state: State, sensors: Sensors, cmd: Command): Estimated<Pose>[] | null {
             if (!recorder || !traj) return null;
             recorder.onTick(state, sensors, cmd);
             return traj.samples().map((s) => s.pose);
